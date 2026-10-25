@@ -1,6 +1,6 @@
 {
   "name": "dsh-guard",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "allow/ask/deny permission gates for DeepSeek Harness tools: path surfaces, per-tool rules, bash patterns, redaction, session approvals, fail-closed config",
   "type": "module",
   "main": "lib/index.js",
