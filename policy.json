@@ -222,8 +222,8 @@
       "*.ps1": "ask",
       "*.vbs": "ask",
       "*.sh": "ask",
-      "rm -rf /*": "deny",
-      "rm -rf ~*": "deny"
+      "rm -rf ~*": "deny",
+      "rm -rf /": "deny"
     },
     "argv": [
       {

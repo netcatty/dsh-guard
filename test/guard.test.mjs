@@ -405,3 +405,12 @@ test('/guard-clear clears recorded session approvals', async () => {
   assert.equal(result.kind, 'success');
   assert.match(result.text, /cleared/);
 });
+
+test('mcp router tool arguments are path-gated', async () => {
+  const result = await decide(
+    { name: 'mcp', arguments: { action: 'call', server: 'fs', tool: 'read_file', arguments: { path: 'secret.env' } } },
+    cwd,
+    permission,
+  );
+  assert.equal(result.state, 'deny');
+});
