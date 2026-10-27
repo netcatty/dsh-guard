@@ -278,6 +278,24 @@ snapshotRetain: 100       # snapshot dirs kept, oldest pruned
 Denied writes are never snapshotted (nothing was going to change), and a capture
 failure never blocks the call — it just leaves nothing to undo.
 
+## Loop detection
+
+A model stuck repeating one identical call is a different failure from a
+dangerous one, and rules cannot see it: every individual call may be allowed.
+The gate counts byte-identical calls (same tool, same arguments) inside a
+window and asks once the count is reached:
+
+```yaml
+repeatLimit: 5          # 0 = off (default)
+repeatWindowMs: 60000   # rolling window
+repeatAction: ask       # allow | ask | deny
+```
+
+`repeatLimit: 5` means the fifth identical call asks; the counter resets once
+`repeatWindowMs` passes without a repeat. Different arguments are a different
+call, so a loop that varies its input is not caught — this targets the stuck
+case, not a determined adversary.
+
 ## Blocking tools by name
 
 `denyTools: [write, edit]` refuses those tools outright — a read-only posture.
@@ -384,7 +402,21 @@ result, backs up the previous file, and lets the hot reload apply it:
 /guard-policy {"bash":{"rm *":"ask"}}
 /guard-policy {"toolParams":{"navigate_page":{"url":{"https://prod-*":"deny"}}}}
 /guard-policy {"bash":{"rm *":null}}          # null removes a rule
+/guard-policy preset list
+/guard-policy preset baseline
 ```
+
+Templates are named fragments merged the same way, so they can only write what a
+hand edit could. Three ship:
+
+| Template | What it writes |
+|---|---|
+| `baseline` | 外部目录 ask、`rm`/`git push`/`sudo` ask、写 `*.env` deny、子代理 ask、`repeatLimit: 5` |
+| `strict` | 命令与写入全部 ask、外部目录 deny、子代理 deny、`repeatLimit: 3` |
+| `off` | `enforce: false`（只审计不拦截）、`repeatLimit: 0` |
+
+A template merges, it does not replace: applying `strict` leaves your existing
+`path` rules alone.
 
 One grammar for every nesting depth, no separator to escape. A fragment that
 fails validation is rejected and the file is left untouched. A rewrite

@@ -1,6 +1,6 @@
 {
   "name": "dsh-guard",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "allow/ask/deny permission gates for DeepSeek Harness tools: path/params/agents surfaces, argv decomposition, network rules, redaction, grants, dry-run, fail-closed config",
   "type": "module",
   "main": "lib/index.js",
@@ -19,7 +19,8 @@
     "policy.json",
     "policy.schema.json",
     "README.md",
-    "lib/policy-edit.js"
+    "lib/policy-edit.js",
+    "lib/presets.js"
   ],
   "dsh": {
     "bundle": {

@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '0.4.1');
+    assert.equal(status.version, '0.5.0');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -564,5 +564,86 @@ test('/guard-policy writes a fragment into the live policy and it takes effect',
     const listed = await command.handler({ rawInput: 'list' });
     assert.equal(listed.kind, 'success');
     assert.match(listed.text, /"bash"/);
+  });
+});
+
+// ---------------------------------------------------------------- repeat detection
+
+test('the same call repeated past repeatLimit asks even when each one is allowed', async () => {
+  await withHome(async () => {
+    const { ctx, listeners } = ctxStub();
+    apply(ctx, { audit: false, repeatLimit: 3 });
+    const pre = listeners.get('tools/pre-execute');
+    const call = (id) => pre(
+      { name: 'probe', arguments: { x: 1 }, agent: { session: { id: 's1' } }, callId: id },
+      () => 'NEXT',
+    );
+    assert.equal(await call('c1'), 'NEXT');
+    assert.equal(await call('c2'), 'NEXT');
+    const third = await call('c3');
+    assert.equal(third.kind, 'ask');
+    assert.match(third.reason, /repeat probe ×3/);
+  });
+});
+
+test('different arguments do not count as the same call', async () => {
+  await withHome(async () => {
+    const { ctx, listeners } = ctxStub();
+    apply(ctx, { audit: false, repeatLimit: 2 });
+    const pre = listeners.get('tools/pre-execute');
+    const call = (id, x) => pre(
+      { name: 'probe', arguments: { x }, agent: { session: { id: 's1' } }, callId: id },
+      () => 'NEXT',
+    );
+    assert.equal(await call('c1', 1), 'NEXT');
+    assert.equal(await call('c2', 2), 'NEXT');
+    assert.equal(await call('c3', 3), 'NEXT');
+  });
+});
+
+test('repeatLimit 0 disables loop detection', async () => {
+  await withHome(async () => {
+    const { ctx, listeners } = ctxStub();
+    apply(ctx, { audit: false, repeatLimit: 0 });
+    const pre = listeners.get('tools/pre-execute');
+    for (let index = 0; index < 10; index += 1) {
+      const result = await pre(
+        { name: 'probe', arguments: { x: 1 }, agent: { session: { id: 's1' } }, callId: `c${index}` },
+        () => 'NEXT',
+      );
+      assert.equal(result, 'NEXT');
+    }
+  });
+});
+
+// ---------------------------------------------------------------- presets
+
+test('/guard-policy preset applies a named template', async () => {
+  await withHome(async (home) => {
+    const registered = new Map();
+    const { ctx } = ctxStub({
+      get: (name) => name === 'commands'
+        ? { register: (definition) => registered.set(definition.name, definition), notifyChange: () => {} }
+        : undefined,
+    });
+    apply(ctx, { audit: false });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const command = registered.get('guard-policy');
+    const file = join(home, 'dsh-plugins', 'dsh-guard', 'policy.json');
+
+    const listed = await command.handler({ rawInput: 'preset list' });
+    assert.equal(listed.kind, 'success');
+    assert.match(listed.text, /baseline/);
+
+    const strict = await command.handler({ rawInput: 'preset strict' });
+    assert.equal(strict.kind, 'success');
+    const after = JSON.parse(await readFile(file, 'utf8'));
+    assert.equal(after.permission.bash['*'], 'ask');
+    assert.equal(after.permission.externalDirectory['*'], 'deny');
+    assert.equal(after.permission.repeatLimit, 3);
+    assert.equal(after.permission.path['*.env'], 'deny', 'existing rules are kept');
+
+    const unknown = await command.handler({ rawInput: 'preset nope' });
+    assert.equal(unknown.kind, 'error');
   });
 });
