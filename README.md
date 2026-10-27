@@ -1,4 +1,4 @@
-# dsh-guard
+# @netcatty/dsh-guard
 
 Allow / ask / deny gates for DeepSeek Harness tool calls.
 
