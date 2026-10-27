@@ -14,6 +14,64 @@ No build step: the plugin is plain ESM. On Windows use the clone path, e.g.
 The repository ships `policy.json`, so rules are versioned with the code and
 hot-reload while the plugin is mounted.
 
+## Data directory
+
+Every file the plugin owns lives in one place:
+
+```
+$DSH_HOME/dsh-plugins/dsh-guard/policy.json   the live permission policy
+$DSH_HOME/dsh-plugins/dsh-guard/audit.jsonl   decision trail (rotates at auditMaxBytes)
+$DSH_HOME/dsh-plugins/dsh-guard/status.json   live status projection
+$DSH_HOME/dsh-plugins/dsh-guard/snapshots/    pre-write file copies (one dir per call)
+```
+
+`$DSH_HOME` defaults to `~/.dsh`. Files written by earlier versions
+(`~/.dsh/guard-audit.jsonl`, `~/.dsh/guard-status.json`) move into that
+directory once per mount; `auditPath` overrides the audit location.
+
+**The live policy is the data-directory copy.** The repository ships a
+`policy.json` too, but only as the seed: on the first mount of a fresh data
+directory it is copied to `dsh-plugins/dsh-guard/policy.json`, and from then on
+that copy is what runs. Editing the checkout therefore never changes behaviour,
+and a `git pull` never overwrites your rules. Deleting the live file falls back
+to the shipped seed until you write one again.
+
+## Editing the policy
+
+The file is meant to be read and edited by hand, so it accepts everything strict
+JSON refuses:
+
+```jsonc
+{
+  "$schema": "./policy.schema.json",   // editor completion + validation
+  "permission": {
+    "*": "allow",
+    // destructive commands always ask
+    "bash": {
+      "git push *": "ask",   /* block comment too */
+      "rm -rf /*": "deny",
+    },
+  },
+}
+```
+
+- **Comments** — `//` to end of line, `/* … */` anywhere. A `//` inside a string
+  or URL is left alone.
+- **Trailing commas** — one after the last rule of an object or array is fine.
+- **`$schema`** — points an editor at `policy.schema.json` for completion and
+  inline validation; the loader strips it before reading rules.
+- **Errors stay loud** — anything beyond trivia (unquoted keys, single quotes)
+  still fails, and a bad policy fails closed rather than silently applying half
+  of it.
+
+Edits hot-reload in about a second. Verify one before trusting it:
+
+```
+/guard-test bash {"command":"git push origin main"}
+```
+
+Nothing else needs to run: no command writes the policy, no UI owns it.
+
 ## Surfaces
 
 | Surface | Applies to | Notes |
@@ -23,6 +81,8 @@ hot-reload while the plugin is mounted.
 | `pathWrite` | `write`, `edit` | direction-specific override |
 | `externalDirectory` | paths outside the session cwd | defaults to allow |
 | `bash` | command text | glob, last matching rule wins |
+| `params` | any tool's arguments | key/value rules; covers tools with no path argument |
+| `agents` | agent identity | `main` / `subagent` / `preset:<name>` |
 
 Matching uses `*` (greedy, crosses `/`) and `?`. Within one surface the **last**
 matching rule wins, so put broad rules first and exceptions after. Across
@@ -30,6 +90,41 @@ surfaces the most restrictive result wins: `deny` > `ask` > `allow`.
 
 Path candidates include the literal argument, its cwd-resolved absolute form,
 its cwd-relative form, and its symlink-resolved target.
+
+## Params
+
+`params` gates any argument of any tool, which is what the path surfaces cannot
+reach: `web_search` queries, `skill` names, MCP arguments that are not paths.
+
+```yaml
+params:
+  query:            # matches the `query` key at any depth
+    "*password*": deny
+  command:
+    "git push*": ask
+```
+
+A key pattern matches either the full dotted path (`arguments.command`) or its
+leaf name (`command`), and array members are addressable by their container
+(`queries` covers `queries.0`, `queries.1`). Within one key's value map the last
+matching rule wins; across keys the most restrictive result wins.
+
+Set `patternMode: regex` to switch **this surface only** to regular expressions
+(`^git\s+push`). Path and command rules stay glob: switching them wholesale
+would break every `*.env` rule in an existing policy.
+
+## Agents
+
+```yaml
+agents:
+  subagent: deny        # delegated children never touch the filesystem
+  main: allow
+  preset:reader: ask    # a read-only preset must still confirm writes
+```
+
+The most specific identity wins: `preset:<name>` and `subagent:<name>` are
+tried before `subagent`/`main`. A forked session carries a `parentSession` but is
+**not** a subagent — identity follows the durable `origin: 'subagent'` marker.
 
 ## Defaults
 
@@ -69,6 +164,68 @@ then ran successfully) and auto-allows the same rule pattern for the rest of
 that session. It is off by default because it silently widens a one-time
 approval; turn it on only when `ask` is your normal posture.
 
+A grant is keyed by `(session, rule pattern)`, so approving `rm *` never widens
+to `git push *`. Both limits are opt-in:
+
+```yaml
+sessionApprovalTtlMs: 1800000   # 30 minutes; 0 = rest of the session
+sessionApprovalMaxUses: 3       # 0 = unlimited
+```
+
+## Three-option approval
+
+`approvalMode: question` replaces the two-outcome DSH approval for guard asks with
+an explicit question carrying three choices: 允许一次 / 本会话允许 / 拒绝, plus
+**写入项目规则** when the hit is a flat surface (`path`, `pathRead`,
+`pathWrite`, `externalDirectory`, `bash`, `tools.<name>`). Choosing it appends
+`"<pattern>": allow` to `<cwd>/.dsh/guard-policy.json` and applies immediately —
+argv/network/params hits cannot be round-tripped into one rule and are refused
+rather than guessed at.
+
+A free-text "Other" answer becomes the denial reason the model sees, e.g.
+`dsh-guard: 用户拒绝 "rm *"：先用只读命令确认`. Only an explicit session choice
+records a standing allow — nothing is widened silently. When no question answerer
+is available the plugin falls back to the normal `ask` decision.
+
+## Dry run
+
+`enforce: false` audits what the rules **would** have done and lets every call
+through, with `dryRun: true` on the audit row:
+
+```yaml
+enforce: false
+```
+
+Use it to tune a policy without locking yourself out. `deny` is not exempt:
+dry-run means dry-run for everything.
+
+## Snapshots and undo
+
+A `write` or `edit` call destroys the previous bytes as soon as it lands. Before
+letting one through, the plugin copies the target file into
+`snapshots/<id>/` and records the id on the audit row, so a bad edit is
+recoverable whether it failed or succeeded:
+
+```
+/guard-undo          roll back the most recent snapshot
+/guard-undo list     the last 10 snapshots (id, time, tool, files)
+/guard-undo <id>     roll back one specific snapshot
+```
+
+Restore rewrites the saved bytes and deletes files that did not exist at capture
+time. It does **not** silently skip: a file over `snapshotMaxBytes` or a
+non-regular path is reported as skipped.
+
+```yaml
+snapshots: true           # default
+snapshotMaxFiles: 20      # per call
+snapshotMaxBytes: 262144  # per file; larger ones are marked skipped
+snapshotRetain: 100       # snapshot dirs kept, oldest pruned
+```
+
+Denied writes are never snapshotted (nothing was going to change), and a capture
+failure never blocks the call — it just leaves nothing to undo.
+
 ## Blocking tools by name
 
 `denyTools: [write, edit]` refuses those tools outright — a read-only posture.
@@ -81,14 +238,6 @@ Every rule state is validated (`allow`/`ask`/`deny`, map shapes, boolean
 switches, array `denyTools`). An invalid configuration **fails closed**: every
 tool call is denied with the validation errors in the reason. Fix the config and
 the next mount restores normal operation.
-
-## Three-option approval
-
-`approvalMode: question` replaces the two-outcome DSH approval for guard asks with
-an explicit question carrying three choices: 允许一次 / 本会话允许 / 拒绝. Only an
-explicit session choice records a standing allow for that rule pattern — nothing
-is widened silently. When no question answerer is available the plugin falls back
-to the normal `ask` decision.
 
 ## Command rules
 
@@ -128,7 +277,11 @@ write-direction path surface, so `echo x > secret.env` is denied by path rules.
 - **Hot reload**: `policy.json` is watched (1s poll). A valid edit replaces the
   live policy without restarting; an invalid edit is rejected and logged.
 - **Audit**: every decision appends one JSON line to
-  `~/.dsh/guard-audit.jsonl` (`auditPath` to change, `audit: false` to disable).
+  `$DSH_HOME/dsh-plugins/dsh-guard/audit.jsonl` (`auditPath` to change,
+  `audit: false` to disable). The `args` field is passed through the same
+  redactor as tool results before it is written, so the trail never becomes the
+  place a credential survives. The file rolls to `audit.jsonl.1` once it passes
+  `auditMaxBytes` (default 5 MiB).
 - **Project policy**: `<project>/.dsh/guard-policy.json` with the same
   `permission` shape, merged over the global policy for sessions whose cwd is
   that project (`projectPolicy: false` disables). Changes are picked up by
@@ -161,9 +314,27 @@ matching; matching is case-insensitive on win32 by default.
 
 ## Commands
 
-`/guard-clear` clears every session approval this plugin recorded (the
-`approved` map shown in the status file). It is registered when the `commands`
-service is mounted; without it the command is simply absent.
+Rules live in `policy.json`; no command writes one. The two commands are runtime
+aids that a config file cannot provide.
+
+`/guard-test <tool> <json>` dry-evaluates one call against the live policy
+without executing it — the same decision the gate would reach, including the
+project overlay:
+
+```
+/guard-test bash {"command":"git push origin main"}
+bash: ask by "git push *" [bash]
+/guard-test web_search {"queries":["my secret"]}
+web_search: ask by "params queries=*secret*" [params]
+```
+
+`/guard-undo [list|<id>]` rolls back a pre-write snapshot; see
+[Snapshots and undo](#snapshots-and-undo).
+
+All three are registered when the `commands` service is mounted; without it they
+are simply absent. A command that takes arguments must declare `input`, or the
+Client treats `/name args` as ordinary chat — the reason `guard-test` and
+`guard-undo` both ship an `input.hint`.
 
 ## Redaction
 
@@ -197,6 +368,17 @@ just the UI.
       "*": allow
       "sudo *": ask
       "rm -rf /*": deny
+    params:
+      query:
+        "*password*": deny
+      command:
+        "git push*": ask
+    agents:
+      subagent: deny
+      main: allow
+    enforce: true
+    snapshots: true
+    snapshotRetain: 100
 ```
 
 ## Limits
@@ -206,4 +388,10 @@ just the UI.
 - The bash scanner is a token heuristic, not a shell parser: quoted globs are
   skipped, and shell expansion can hide a path. It catches the common accident,
   not a determined bypass.
-- MCP tools, skills, and project trust are out of scope for this version.
+- `network` rules inspect URLs in text. They are not a proxy: traffic from a
+  process that resolves its own hostnames is out of reach.
+- Glob patterns are bounded to `maxGlobStars` (default 2) unbounded `*` runs;
+  a third one is a validation error, because nested greedy quantifiers
+  backtrack exponentially on untrusted input. Write two rules instead.
+- `preset:<name>` identity depends on the host recording `agentPreset` on the
+  session; without it only `main`/`subagent` are distinguishable.

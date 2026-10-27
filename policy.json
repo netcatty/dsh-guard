@@ -1,4 +1,5 @@
 {
+  "$schema": "./policy.schema.json",
   "permission": {
     "*": "allow",
     "approvalMode": "question",
@@ -225,6 +226,8 @@
       "rm -rf ~*": "deny",
       "rm -rf /": "deny"
     },
+    "params": {},
+    "agents": {},
     "argv": [
       {
         "match": {
@@ -269,6 +272,17 @@
     "opaque": "ask",
     "yolo": false,
     "network": [],
-    "projectPolicy": true
+    "projectPolicy": true,
+    "enforce": true,
+    "patternMode": "glob",
+    "maxGlobStars": 2,
+    "auditMaxBytes": 5242880,
+    "sessionApprovalTtlMs": 0,
+    "sessionApprovalMaxUses": 0,
+    "approvePersist": true,
+    "snapshots": true,
+    "snapshotMaxFiles": 20,
+    "snapshotMaxBytes": 262144,
+    "snapshotRetain": 100
   }
 }

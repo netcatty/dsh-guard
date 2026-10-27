@@ -388,11 +388,11 @@ test('pwsh commands use the same surfaces as bash', async () => {
   assert.equal(asked.state, 'ask');
 });
 
-test('/guard-clear clears recorded session approvals', async () => {
-  let registered;
+test('guard commands never touch the policy file', async () => {
+  const registered = new Map();
   const ctx = {
     on: () => {},
-    get: (name) => name === 'commands' ? { register: (def) => { registered = def; } } : undefined,
+    get: (name) => name === 'commands' ? { register: (def) => { registered.set(def.name, def); } } : undefined,
     tools: {},
     workingDirectory: { ensure: async () => cwd },
     sessionProjections: { stateOf: () => 'workspace-write' },
@@ -400,10 +400,9 @@ test('/guard-clear clears recorded session approvals', async () => {
   };
   apply(ctx, { approvalMode: 'question', bash: { 'printf guard-*': 'ask' }, audit: false });
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(registered?.name, 'guard-clear');
-  const result = registered.handler();
-  assert.equal(result.kind, 'success');
-  assert.match(result.text, /cleared/);
+  assert.deepEqual([...registered.keys()].sort(), ['guard-test', 'guard-undo']);
+  assert.ok(registered.get('guard-test').input, 'argument-taking commands declare input');
+  assert.ok(registered.get('guard-undo').input, 'argument-taking commands declare input');
 });
 
 test('mcp router tool arguments are path-gated', async () => {

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/netcatty/dsh-guard/policy.schema.json",
+  "title": "dsh-guard policy",
+  "description": "allow / ask / deny gates for DeepSeek Harness tool calls. The live file is $DSH_HOME/dsh-plugins/dsh-guard/policy.json; this schema gives an editor completion and validation for it.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Editor metadata pointing at this schema. Ignored by the loader."
+    },
+    "permission": { "$ref": "#/$defs/permission" }
+  },
+  "$defs": {
+    "state": {
+      "type": "string",
+      "enum": ["allow", "ask", "deny"],
+      "description": "deny > ask > allow; the most restrictive result across surfaces wins."
+    },
+    "ruleMap": {
+      "type": "object",
+      "description": "Pattern to state. Within one map the LAST matching rule wins.",
+      "additionalProperties": { "$ref": "#/$defs/state" }
+    },
+    "toolRules": {
+      "type": "object",
+      "description": "Per-tool path rules, e.g. { \"read\": { \"*/secrets/*\": \"deny\" } }.",
+      "additionalProperties": { "$ref": "#/$defs/ruleMap" }
+    },
+    "paramRules": {
+      "type": "object",
+      "description": "Key pattern to value-pattern map. Keys match a full dotted path (arguments.command) or a leaf name (command).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "$ref": "#/$defs/state" }
+      }
+    },
+    "permission": {
+      "type": "object",
+      "properties": {
+        "*": { "$ref": "#/$defs/state" },
+        "path": { "$ref": "#/$defs/ruleMap" },
+        "pathRead": { "$ref": "#/$defs/ruleMap" },
+        "pathWrite": { "$ref": "#/$defs/ruleMap" },
+        "externalDirectory": { "$ref": "#/$defs/ruleMap" },
+        "bash": { "$ref": "#/$defs/ruleMap" },
+        "tools": { "$ref": "#/$defs/toolRules" },
+        "params": { "$ref": "#/$defs/paramRules" },
+        "agents": { "$ref": "#/$defs/ruleMap" },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "match": {
+                "type": "object",
+                "properties": {
+                  "command": { "type": "array", "items": { "type": "string" } },
+                  "args": { "type": "array", "items": { "type": "string" } },
+                  "anyArg": { "type": "array", "items": { "type": "string" } },
+                  "pipeline": { "type": "array", "items": { "type": "string" } }
+                },
+                "additionalProperties": false
+              },
+              "action": { "$ref": "#/$defs/state" }
+            },
+            "required": ["match", "action"],
+            "additionalProperties": false
+          }
+        },
+        "network": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "match": {
+                "type": "object",
+                "properties": {
+                  "domains": { "type": "array", "items": { "type": "string" } }
+                },
+                "additionalProperties": false
+              },
+              "action": { "$ref": "#/$defs/state" }
+            },
+            "required": ["match", "action"],
+            "additionalProperties": false
+          }
+        },
+        "opaque": { "$ref": "#/$defs/state" },
+        "wrappers": { "$ref": "#/$defs/state" },
+        "sandboxAware": { "type": "boolean" },
+        "yolo": { "type": "boolean" },
+        "enforce": { "type": "boolean" },
+        "audit": { "type": "boolean" },
+        "auditPath": { "type": "string" },
+        "auditMaxBytes": { "type": "integer", "minimum": 0 },
+        "projectPolicy": { "type": "boolean" },
+        "projectPolicyStrict": { "type": "boolean" },
+        "caseInsensitivePaths": { "type": "boolean" },
+        "patternMode": { "type": "string", "enum": ["glob", "regex"] },
+        "maxGlobStars": { "type": "integer", "minimum": 0 },
+        "redact": { "type": "boolean" },
+        "sessionApprovals": { "type": "boolean" },
+        "sessionApprovalTtlMs": { "type": "integer", "minimum": 0 },
+        "sessionApprovalMaxUses": { "type": "integer", "minimum": 0 },
+        "approvePersist": { "type": "boolean" },
+        "snapshots": { "type": "boolean" },
+        "snapshotMaxFiles": { "type": "integer", "minimum": 0 },
+        "snapshotMaxBytes": { "type": "integer", "minimum": 0 },
+        "snapshotRetain": { "type": "integer", "minimum": 0 },
+        "approvalMode": { "type": "string", "enum": ["approval", "question"] },
+        "denyTools": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "anyOf": [
+    { "required": ["permission"] },
+    { "required": ["path"] },
+    { "required": ["bash"] }
+  ]
+}

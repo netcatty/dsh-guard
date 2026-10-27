@@ -1,7 +1,7 @@
 {
   "name": "dsh-guard",
-  "version": "0.1.2",
-  "description": "allow/ask/deny permission gates for DeepSeek Harness tools: path surfaces, per-tool rules, bash patterns, redaction, session approvals, fail-closed config",
+  "version": "0.3.1",
+  "description": "allow/ask/deny permission gates for DeepSeek Harness tools: path/params/agents surfaces, argv decomposition, network rules, redaction, grants, dry-run, fail-closed config",
   "type": "module",
   "main": "lib/index.js",
   "license": "MIT",
@@ -9,8 +9,14 @@
     "lib/index.js",
     "lib/shell.js",
     "lib/mask.js",
+    "lib/paths.js",
+    "lib/match.js",
+    "lib/params.js",
+    "lib/snapshots.js",
+    "lib/jsonc.js",
     "cordis.patch.yml",
     "policy.json",
+    "policy.schema.json",
     "README.md"
   ],
   "dsh": {
@@ -40,5 +46,8 @@
     "permissions",
     "guard",
     "security"
-  ]
+  ],
+  "scripts": {
+    "test": "node --test test/guard.test.mjs test/features.test.mjs test/snapshots.test.mjs"
+  }
 }
