@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '0.3.4');
+    assert.equal(status.version, '0.4.0');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -459,4 +459,61 @@ test('projectPolicySearchUp: false limits the read to the cwd', async () => {
   assert.equal(await run('root-only x', 'c1'), 'NEXT', 'the root file is out of scope');
   assert.equal((await run('near-only x', 'c2')).kind, 'deny', 'the cwd file still applies');
   await rm(repo, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------- mcp tools
+
+test('tools keys match tool names as globs, so one MCP server is governed at once', async () => {
+  const permission = { ...base, tools: { 'mcp__chrome-devtools__*': { '*': 'deny' } } };
+  const click = await decide({ name: 'mcp__chrome-devtools__click', arguments: {} }, cwd, permission);
+  assert.equal(click.state, 'deny');
+  assert.equal(click.surface, 'tools.mcp__chrome-devtools__click');
+  const navigate = await decide({ name: 'mcp__chrome-devtools__navigate_page', arguments: { url: 'https://x' } }, cwd, permission);
+  assert.equal(navigate.state, 'deny');
+  assert.equal(await decide({ name: 'read', arguments: { file_path: 'a.txt' } }, cwd, permission), undefined);
+});
+
+test('toolParams scopes a value rule to one tool, not to every tool with that key', async () => {
+  const permission = {
+    ...base,
+    toolParams: { 'mcp__chrome-devtools__navigate_page': { url: { 'https://prod-*': 'deny' } } },
+  };
+  const hit = await decide({ name: 'mcp__chrome-devtools__navigate_page', arguments: { url: 'https://prod-1.example/a' } }, cwd, permission);
+  assert.equal(hit.state, 'deny');
+  assert.match(hit.pattern, /toolParams/);
+
+  const dev = await decide({ name: 'mcp__chrome-devtools__navigate_page', arguments: { url: 'https://dev.example/a' } }, cwd, permission);
+  assert.equal(dev, undefined);
+
+  const otherTool = await decide({ name: 'fetch', arguments: { url: 'https://prod-1.example/a' } }, cwd, permission);
+  assert.equal(otherTool, undefined, 'another tool with the same key is untouched');
+});
+
+test('a toolParams entry with a malformed shape is a validation error', () => {
+  assert.ok(validate({ toolParams: { 'mcp__x__y': { url: 'deny' } } }).length > 0);
+});
+
+// ---------------------------------------------------------------- approval preview
+
+test('a write preview shows the current and next content', async () => {
+  const { writePreview, editPreview, previewFor } = await import('../lib/preview.js');
+  const text = writePreview({ path: 'a.md', before: 'one\ntwo\n', after: 'one\nTWO\nthree\n' });
+  assert.match(text, /改写 a\.md：3 → 4 行/);
+  assert.match(text, /^- one$/m);
+  assert.match(text, /^\+ TWO$/m);
+
+  const created = writePreview({ path: 'new.txt', after: 'hello' });
+  assert.match(created, /新建 new\.txt/);
+
+  const edit = editPreview({ path: 'a.md', oldString: 'const x = 1', newString: 'const x = 2' });
+  assert.match(edit, /编辑 a\.md/);
+  assert.match(edit, /- const x = 1/);
+  assert.match(edit, /\+ const x = 2/);
+
+  const viaExec = previewFor(
+    { name: 'write', arguments: { file_path: '/tmp/x/a.md', content: 'next' } },
+    () => 'before',
+  );
+  assert.match(viaExec, /改写/);
+  assert.equal(previewFor({ name: 'bash', arguments: { command: 'ls' } }, () => ''), '');
 });

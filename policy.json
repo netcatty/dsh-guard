@@ -227,6 +227,7 @@
       "rm -rf /": "deny"
     },
     "params": {},
+    "toolParams": {},
     "agents": {},
     "argv": [
       {

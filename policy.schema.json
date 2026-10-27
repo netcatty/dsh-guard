@@ -69,7 +69,11 @@
           "$ref": "#/$defs/ruleMap"
         },
         "tools": {
-          "$ref": "#/$defs/toolRules"
+          "type": "object",
+          "description": "Tool-name glob to path-rule map. Keys match the tool name, so \"mcp__chrome-devtools__*\" governs a whole MCP server.",
+          "additionalProperties": {
+            "$ref": "#/$defs/ruleMap"
+          }
         },
         "params": {
           "$ref": "#/$defs/paramRules"
@@ -243,6 +247,19 @@
         },
         "projectPolicySearchUp": {
           "type": "boolean"
+        },
+        "toolParams": {
+          "type": "object",
+          "description": "Tool-name glob to key/value rule map, scoped to that tool only.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/state"
+              }
+            }
+          }
         }
       },
       "additionalProperties": false

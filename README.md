@@ -82,6 +82,7 @@ Nothing else needs to run: no command writes the policy, no UI owns it.
 | `externalDirectory` | paths outside the session cwd | defaults to allow |
 | `bash` | command text | glob, last matching rule wins |
 | `params` | any tool's arguments | key/value rules; covers tools with no path argument |
+| `toolParams` | one tool's arguments | like `params`, scoped to a tool-name glob |
 | `agents` | agent identity | `main` / `subagent` / `preset:<name>` |
 
 Matching uses `*` (greedy, crosses `/`) and `?`. Within one surface the **last**
@@ -112,6 +113,37 @@ matching rule wins; across keys the most restrictive result wins.
 Set `patternMode: regex` to switch **this surface only** to regular expressions
 (`^git\s+push`). Path and command rules stay glob: switching them wholesale
 would break every `*.env` rule in an existing policy.
+
+## MCP tools
+
+MCP tools are named `mcp__<server>__<tool>` and have no path argument of their
+own, so they need their own surfaces. All three forms work:
+
+```jsonc
+{
+  "permission": {
+    // 1. one server at a time, by tool-name glob
+    "tools": {
+      "mcp__chrome-devtools__*": { "*": "deny" }
+    },
+    // 2. one tool's arguments, without touching other tools that happen to
+    //    use the same key (`fetch.url` stays free)
+    "toolParams": {
+      "mcp__chrome-devtools__navigate_page": {
+        "url": { "https://prod-*": "deny" }
+      }
+    },
+    // 3. refuse one tool outright, before any argument is looked at
+    "denyTools": ["mcp__github__delete_repo"]
+  }
+}
+```
+
+`tools` keys are matched as globs against the tool name, and a tool with no path
+argument is matched by its own name — so `{ "*": "deny" }` means "every call to
+this tool". `toolParams` is `params` narrowed to one tool: `{ tool: { key: {
+value: state } } }`, with the same key matching (dotted path or leaf, array
+containers included).
 
 ## Agents
 
@@ -186,6 +218,26 @@ A free-text "Other" answer becomes the denial reason the model sees, e.g.
 `dsh-guard: 用户拒绝 "rm *"：先用只读命令确认`. Only an explicit session choice
 records a standing allow — nothing is widened silently. When no question answerer
 is available the plugin falls back to the normal `ask` decision.
+
+### What the dialog shows
+
+For `write` and `edit` the prompt carries a preview, not just the rule name:
+
+```
+规则：tools.write
+改写 src/app.ts：120 → 118 行（-2）
+--- 原
+- import { old } from './old'
+- ...
++++ 新
++ import { next } from './next'
++ ...
+```
+
+The current bytes are read from disk (capped at 128 KB) and compared by line
+count, with the first six lines of each side. `edit` shows the replaced fragment
+instead. It is read-only: a preview that cannot be built is simply omitted, and
+it never blocks or delays the approval beyond one bounded read.
 
 ## Dry run
 
