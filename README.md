@@ -243,6 +243,12 @@ instead.
 The block is sent as a fenced Markdown code block, because the dialog renders
 `detail` as Markdown and bare newlines would collapse into spaces.
 
+Set `webBase` to the browser origin of this Web UI (for example
+`http://192.168.1.10:3088`) so approval cards can link to the diff page. The
+plugin cannot discover that origin by itself: `webApp` is not visible from the
+plugin scope and the host process has no `DSH_WEB_URL`. Without it the card still
+shows the text preview, just no link.
+
 For `write` calls the card also carries **打开双栏对比**: a link to
 `/api/dsh-guard/diff?id=…`, an HTML page that pairs old and new lines row by row
 with red/green highlighting. Entries live in memory for 10 minutes (24 at most)

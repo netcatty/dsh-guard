@@ -260,6 +260,10 @@
               }
             }
           }
+        },
+        "webBase": {
+          "type": "string",
+          "description": "Absolute origin used to build links in approval cards, e.g. http://100.94.19.22:3088. Empty = no link."
         }
       },
       "additionalProperties": false
