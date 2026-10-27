@@ -219,6 +219,21 @@ A free-text "Other" answer becomes the denial reason the model sees, e.g.
 records a standing allow — nothing is widened silently. When no question answerer
 is available the plugin falls back to the normal `ask` decision.
 
+### Self-drawn dialog (`approvalMode: dialog`)
+
+`approvalMode: dialog` replaces the DSH question card with a dialog the plugin
+draws itself. Because it is our own DOM, it shows the change **side by side**
+instead of a text diff:
+
+- two columns, red for the old line, green for the new one, unchanged rows grey
+- `允许一次` / `本会话允许` / `写入项目规则` / `拒绝`
+- one request at a time, 120 s timeout (`dialogTimeoutMs `) then deny
+
+Mechanism: `tools/pre-execute` parks a Promise in an in-memory map, the browser
+polls `GET /api/dsh-guard/pending`, and `POST /api/dsh-guard/decide` resolves it.
+If no Client is connected the request waits for the timeout, so this mode assumes
+the Web UI is open.
+
 ### What the dialog shows
 
 For `write` and `edit` the prompt carries a preview, not just the rule name:

@@ -236,8 +236,10 @@
           "type": "string",
           "enum": [
             "approval",
-            "question"
-          ]
+            "question",
+            "dialog"
+          ],
+          "description": "approval = DSH native, question = DSH question card with text diff, dialog = self-drawn two-column dialog."
         },
         "denyTools": {
           "type": "array",
@@ -264,6 +266,11 @@
         "webBase": {
           "type": "string",
           "description": "Absolute origin used to build links in approval cards, e.g. http://100.94.19.22:3088. Empty = no link."
+        },
+        "dialogTimeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "How long a self-drawn dialog waits before denying. Default 120000."
         }
       },
       "additionalProperties": false
