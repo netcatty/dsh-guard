@@ -1,6 +1,6 @@
 {
   "name": "dsh-guard",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "allow/ask/deny permission gates for DeepSeek Harness tools: path/params/agents surfaces, argv decomposition, network rules, redaction, grants, dry-run, fail-closed config",
   "type": "module",
   "main": "lib/index.js",
@@ -20,11 +20,18 @@
     "policy.schema.json",
     "README.md",
     "lib/policy-edit.js",
-    "lib/presets.js"
+    "lib/presets.js",
+    "lib/client.js"
   ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
     }
   },
   "engines": {
@@ -36,6 +43,9 @@
     },
     "./mask": {
       "default": "./lib/mask.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
     }
   },
   "author": "netcatty",

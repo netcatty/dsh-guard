@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '0.5.0');
+    assert.equal(status.version, '0.6.0');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -645,5 +645,87 @@ test('/guard-policy preset applies a named template', async () => {
 
     const unknown = await command.handler({ rawInput: 'preset nope' });
     assert.equal(unknown.kind, 'error');
+  });
+});
+
+// ---------------------------------------------------------------- settings API
+
+function fakeResponse() {
+  const res = { status: 0, body: '', writeHead(status) { this.status = status; }, end(body) { this.body = body; } };
+  return res;
+}
+
+function fakeRequest(method, payload) {
+  const chunks = payload === undefined ? [] : [JSON.stringify(payload)];
+  return {
+    method,
+    socket: { remoteAddress: '127.0.0.1' },
+    headers: {},
+    async *[Symbol.asyncIterator]() {
+      for (const chunk of chunks) yield chunk;
+    },
+  };
+}
+
+test('the settings API exposes switches and writes them through validation', async () => {
+  await withHome(async (home) => {
+    const routes = new Map();
+    const { ctx } = ctxStub({
+      inject: (services, setup) => {
+        if (!services.includes('webServer')) return;
+        setup({ webServer: { register: (route) => { routes.set(route.path, route.handler); return () => {}; } } });
+      },
+      effect: (fn) => { fn(); return () => {}; },
+    });
+    apply(ctx, { audit: false });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.ok(routes.has('/api/dsh-guard/state'));
+    assert.ok(routes.has('/api/dsh-guard/config'));
+    assert.ok(routes.has('/api/dsh-guard/preset'));
+
+    const stateRes = fakeResponse();
+    await routes.get('/api/dsh-guard/state')(fakeRequest('GET'), stateRes);
+    assert.equal(stateRes.status, 200);
+    const state = JSON.parse(stateRes.body);
+    assert.equal(state.config.enforce, true);
+    assert.ok(Array.isArray(state.presets));
+    assert.ok(state.policyPath.endsWith('policy.json'));
+
+    const configRes = fakeResponse();
+    await routes.get('/api/dsh-guard/config')(fakeRequest('POST', { patch: { enforce: false } }), configRes);
+    assert.equal(configRes.status, 200);
+    const file = join(home, 'dsh-plugins', 'dsh-guard', 'policy.json');
+    const after = JSON.parse(await readFile(file, 'utf8'));
+    assert.equal(after.permission.enforce, false);
+
+    const badRes = fakeResponse();
+    await routes.get('/api/dsh-guard/config')(fakeRequest('POST', { patch: { enforce: 'no' } }), badRes);
+    assert.equal(badRes.status, 400);
+
+    const presetRes = fakeResponse();
+    await routes.get('/api/dsh-guard/preset')(fakeRequest('POST', { name: 'strict' }), presetRes);
+    assert.equal(presetRes.status, 200);
+    const presetFile = JSON.parse(await readFile(file, 'utf8'));
+    assert.equal(presetFile.permission.bash['*'], 'ask');
+  });
+});
+
+test('the settings API rejects a non-loopback cross-origin caller', async () => {
+  await withHome(async () => {
+    const routes = new Map();
+    const { ctx } = ctxStub({
+      inject: (services, setup) => {
+        if (!services.includes('webServer')) return;
+        setup({ webServer: { register: (route) => { routes.set(route.path, route.handler); return () => {}; } } });
+      },
+      effect: (fn) => { fn(); return () => {}; },
+    });
+    apply(ctx, { audit: false });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const res = fakeResponse();
+    const req = { method: 'GET', socket: { remoteAddress: '10.0.0.5' }, headers: { origin: 'https://evil.example' } };
+    await routes.get('/api/dsh-guard/state')(req, res);
+    assert.equal(res.status, 403);
   });
 });

@@ -389,6 +389,27 @@ Windows-specific work still pending real-machine verification (install, run
 PowerShell quoting). Windows separators and drive letters are normalized before
 matching; matching is case-insensitive on win32 by default.
 
+## Settings page
+
+A **dsh-guard** tab appears under 设置 → 内置插件 (the shared plugin settings
+surface, next to other plugins). It edits only the switches and scalar knobs:
+
+| Control | Writes |
+|---|---|
+| `enforce` / `yolo` / `snapshots` / `audit` | the four booleans |
+| `repeatLimit` / `repeatWindowMs` / `repeatAction` | loop detection |
+| preset selector | `baseline` / `strict` / `off`, merged like `/guard-policy` |
+| recent decisions | read-only, last 10 |
+| snapshot list | read-only, last 8; roll back with `/guard-undo` |
+
+Every write goes through `POST /api/dsh-guard/config`, which runs the same
+`applyPatch` + `validate` + backup path as the command, so the panel cannot
+produce a policy a hand edit could not. Rules themselves stay in `policy.json`:
+they are nested maps with unlimited combinations, and a form covering them would
+end up as a JSON textarea anyway.
+
+The route fence is loopback-or-same-origin, the same one every plugin uses.
+
 ## Commands
 
 `policy.json` is the source of truth. `/guard-policy` writes it from the
