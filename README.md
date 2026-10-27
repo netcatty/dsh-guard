@@ -4,6 +4,14 @@ Allow / ask / deny gates for DeepSeek Harness tool calls.
 
 ## Install
 
+From npm:
+
+```sh
+dsh plugin --profile web add @netcatty/dsh-guard
+```
+
+From a checkout (development):
+
 ```sh
 git clone git@github.com:netcatty/dsh-guard.git ~/code/dsh-guard
 dsh plugin --profile web add link:~/code/dsh-guard
