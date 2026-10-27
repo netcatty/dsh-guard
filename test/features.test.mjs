@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '1.1.3');
+    assert.equal(status.version, '1.2.0');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -752,5 +752,23 @@ test('readTail returns the newest rows from a large file', async () => {
   assert.match(describeDecision(rows.at(-1)), /allow  t4999/);
 
   assert.equal(readTail(join(dir, 'missing.jsonl'), 5).length, 0);
+  await rm(dir, { recursive: true, force: true });
+});
+
+// ------------------------------------------------- project deep merge
+
+test('a project tools rule does not erase inherited tools rules', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'guard-proj-'));
+  await mkdir(join(dir, '.dsh'), { recursive: true });
+  await writeFile(
+    join(dir, '.dsh/guard-policy.json'),
+    JSON.stringify({ permission: { tools: { write: { '/tmp/keep': 'allow' } } } }),
+  );
+  const { projectPermission, mergePermission } = await import('../lib/index.js');
+  const base = mergePermission({ tools: { write: { '*': 'ask' }, edit: { '*': 'deny' } } });
+  const effective = projectPermission(base, dir);
+  assert.equal(effective.tools.write['*'], 'ask', 'global write rule survives');
+  assert.equal(effective.tools.write['/tmp/keep'], 'allow', 'project rule is added');
+  assert.equal(effective.tools.edit['*'], 'deny', 'other tools are untouched');
   await rm(dir, { recursive: true, force: true });
 });
