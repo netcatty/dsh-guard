@@ -402,9 +402,10 @@ test('guard commands never touch the policy file', async () => {
   };
   apply(ctx, { approvalMode: 'question', bash: { 'printf guard-*': 'ask' }, audit: false });
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.deepEqual([...registered.keys()].sort(), ['guard-test', 'guard-undo']);
+  assert.deepEqual([...registered.keys()].sort(), ['guard-policy', 'guard-test', 'guard-undo']);
   assert.ok(registered.get('guard-test').input, 'argument-taking commands declare input');
   assert.ok(registered.get('guard-undo').input, 'argument-taking commands declare input');
+  assert.ok(registered.get('guard-policy').input, 'argument-taking commands declare input');
 });
 
 test('mcp router tool arguments are path-gated', async () => {

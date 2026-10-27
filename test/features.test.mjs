@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '0.4.0');
+    assert.equal(status.version, '0.4.1');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -516,4 +516,53 @@ test('a write preview shows the current and next content', async () => {
   );
   assert.match(viaExec, /改写/);
   assert.equal(previewFor({ name: 'bash', arguments: { command: 'ls' } }, () => ''), '');
+});
+
+// ---------------------------------------------------------------- policy command
+
+test('deepMerge replaces leaves, keeps siblings, and removes null keys', async () => {
+  const { applyPatch } = await import('../lib/policy-edit.js');
+  const current = { bash: { 'rm *': 'ask', 'git push *': 'ask' }, params: { query: { '*x*': 'deny' } } };
+  const { next, changed } = applyPatch(current, { bash: { 'rm *': 'deny', 'git push *': null } });
+  assert.equal(changed, true);
+  assert.deepEqual(next, { bash: { 'rm *': 'deny' }, params: { query: { '*x*': 'deny' } } });
+  assert.equal(applyPatch(current, { bash: { 'rm *': 'ask' } }).changed, false);
+});
+
+test('/guard-policy writes a fragment into the live policy and it takes effect', async () => {
+  await withHome(async (home) => {
+    const registered = new Map();
+    const { ctx } = ctxStub({
+      get: (name) => name === 'commands'
+        ? { register: (definition) => registered.set(definition.name, definition), notifyChange: () => {} }
+        : undefined,
+    });
+    apply(ctx, { audit: false });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const command = registered.get('guard-policy');
+    assert.ok(command, 'guard-policy is registered');
+    const file = join(home, 'dsh-plugins', 'dsh-guard', 'policy.json');
+
+    const added = await command.handler({ rawInput: '{"bash":{"custom-cmd *":"deny"}}' });
+    assert.equal(added.kind, 'success');
+    const after = JSON.parse(await readFile(file, 'utf8'));
+    assert.equal(after.permission.bash['custom-cmd *'], 'deny');
+    assert.equal(after.$schema, './policy.schema.json');
+    assert.ok(existsSync(`${file}.bak`), 'the previous file is kept');
+
+    const removed = await command.handler({ rawInput: '{"bash":{"custom-cmd *":null}}' });
+    assert.equal(removed.kind, 'success');
+    const cleaned = JSON.parse(await readFile(file, 'utf8'));
+    assert.equal(cleaned.permission.bash['custom-cmd *'], undefined);
+
+    const bad = await command.handler({ rawInput: '{"bash":{"custom-cmd *":"block"}}' });
+    assert.equal(bad.kind, 'error');
+    const untouched = JSON.parse(await readFile(file, 'utf8'));
+    assert.equal(untouched.permission.bash['custom-cmd *'], undefined, 'a rejected patch writes nothing');
+
+    const listed = await command.handler({ rawInput: 'list' });
+    assert.equal(listed.kind, 'success');
+    assert.match(listed.text, /"bash"/);
+  });
 });

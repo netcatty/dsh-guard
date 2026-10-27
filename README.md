@@ -373,8 +373,24 @@ matching; matching is case-insensitive on win32 by default.
 
 ## Commands
 
-Rules live in `policy.json`; no command writes one. The two commands are runtime
-aids that a config file cannot provide.
+`policy.json` is the source of truth. `/guard-policy` writes it from the
+composer; `/guard-test` and `/guard-undo` never touch it.
+
+`/guard-policy` deep-merges a JSON fragment into the live policy, validates the
+result, backs up the previous file, and lets the hot reload apply it:
+
+```
+/guard-policy list
+/guard-policy {"bash":{"rm *":"ask"}}
+/guard-policy {"toolParams":{"navigate_page":{"url":{"https://prod-*":"deny"}}}}
+/guard-policy {"bash":{"rm *":null}}          # null removes a rule
+```
+
+One grammar for every nesting depth, no separator to escape. A fragment that
+fails validation is rejected and the file is left untouched. A rewrite
+normalizes the file, so hand-written comments are lost; the previous text stays
+at `policy.json.bak`, and for comment-preserving edits you can still edit the
+file directly.
 
 `/guard-test <tool> <json>` dry-evaluates one call against the live policy
 without executing it — the same decision the gate would reach, including the
@@ -392,8 +408,8 @@ web_search: ask by "params queries=*secret*" [params]
 
 All three are registered when the `commands` service is mounted; without it they
 are simply absent. A command that takes arguments must declare `input`, or the
-Client treats `/name args` as ordinary chat — the reason `guard-test` and
-`guard-undo` both ship an `input.hint`.
+Client treats `/name args` as ordinary chat — the reason all three ship an
+`input.hint`.
 
 ## Redaction
 
