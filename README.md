@@ -396,7 +396,24 @@ write-direction path surface, so `echo x > secret.env` is denied by path rules.
   `<repo>/.dsh/guard-policy.json` and override one package at
   `<repo>/pkg/.dsh/guard-policy.json`; the nearest file wins for the same key
   (`projectPolicySearchUp: false` reads only the cwd). Changes are picked up by
-  mtime on the next call.
+  mtime on the next call. Merging is **per key, not per table**: a project file
+  that sets `tools.write` for one path keeps every inherited write rule.
+
+  A project rule may be `null`, which **removes** the inherited rule instead of
+  setting one. This is the only way to relax a global rule for one project
+  without rewriting the global file:
+
+  ```jsonc
+  {
+    "permission": {
+      "bash": { "rm *": null },   // stop asking for rm in this project
+      "tools": { "write": null }  // drop the whole inherited table
+    }
+  }
+  ```
+
+  In the global file `null` is accepted but has no effect — nothing is inherited
+  behind it, so the rule simply does not exist.
 - **Network rules**: `network: [{ match: { domains: ["evil.example"] },
   action: deny }]` matches hostnames from URLs in shell commands and tool
   arguments (`url`, `endpoint`, …). This is static inspection, not a proxy.

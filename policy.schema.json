@@ -27,24 +27,45 @@
       "type": "object",
       "description": "Pattern to state. Within one map the LAST matching rule wins.",
       "additionalProperties": {
-        "$ref": "#/$defs/state"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/state"
+          },
+          {
+            "type": "null",
+            "description": "Remove this inherited rule."
+          }
+        ]
       }
     },
     "toolRules": {
       "type": "object",
       "description": "Per-tool path rules, e.g. { \"read\": { \"*/secrets/*\": \"deny\" } }.",
       "additionalProperties": {
-        "$ref": "#/$defs/ruleMap"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ruleMap"
+          },
+          {
+            "type": "null",
+            "description": "Remove the whole inherited table."
+          }
+        ]
       }
     },
     "paramRules": {
       "type": "object",
       "description": "Key pattern to value-pattern map. Keys match a full dotted path (arguments.command) or a leaf name (command).",
       "additionalProperties": {
-        "type": "object",
-        "additionalProperties": {
-          "$ref": "#/$defs/state"
-        }
+        "oneOf": [
+          {
+            "$ref": "#/$defs/ruleMap"
+          },
+          {
+            "type": "null",
+            "description": "Remove the whole inherited table."
+          }
+        ]
       }
     },
     "permission": {

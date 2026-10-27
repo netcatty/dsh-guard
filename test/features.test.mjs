@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '1.2.0');
+    assert.equal(status.version, '1.3.0');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -770,5 +770,33 @@ test('a project tools rule does not erase inherited tools rules', async () => {
   assert.equal(effective.tools.write['*'], 'ask', 'global write rule survives');
   assert.equal(effective.tools.write['/tmp/keep'], 'allow', 'project rule is added');
   assert.equal(effective.tools.edit['*'], 'deny', 'other tools are untouched');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('a project null removes one inherited rule', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'guard-proj-'));
+  await mkdir(join(dir, '.dsh'), { recursive: true });
+  await writeFile(
+    join(dir, '.dsh/guard-policy.json'),
+    JSON.stringify({ permission: { tools: { write: { '*': null } } } }),
+  );
+  const { projectPermission, mergePermission } = await import('../lib/index.js');
+  const effective = projectPermission(mergePermission({ tools: { write: { '*': 'ask', '/keep': 'deny' } } }), dir);
+  assert.equal(effective.tools.write['*'], undefined, 'the inherited key is gone');
+  assert.equal(effective.tools.write['/keep'], 'deny', 'siblings survive');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('a project null removes a whole nested table', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'guard-proj-'));
+  await mkdir(join(dir, '.dsh'), { recursive: true });
+  await writeFile(
+    join(dir, '.dsh/guard-policy.json'),
+    JSON.stringify({ permission: { bash: { 'rm *': null } } }),
+  );
+  const { projectPermission, mergePermission } = await import('../lib/index.js');
+  const effective = projectPermission(mergePermission({ bash: { 'rm *': 'ask', 'git push *': 'ask' } }), dir);
+  assert.equal(effective.bash['rm *'], undefined);
+  assert.equal(effective.bash['git push *'], 'ask');
   await rm(dir, { recursive: true, force: true });
 });
