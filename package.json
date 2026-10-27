@@ -1,6 +1,6 @@
 {
   "name": "dsh-guard",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "allow/ask/deny permission gates for DeepSeek Harness tools: path/params/agents surfaces, argv decomposition, network rules, redaction, grants, dry-run, fail-closed config",
   "type": "module",
   "main": "lib/index.js",
@@ -21,7 +21,8 @@
     "README.md",
     "lib/policy-edit.js",
     "lib/presets.js",
-    "lib/client.js"
+    "lib/client.js",
+    "lib/audit-log.js"
   ],
   "dsh": {
     "bundle": {
@@ -61,6 +62,6 @@
     "security"
   ],
   "scripts": {
-    "test": "node --test test/guard.test.mjs test/features.test.mjs test/snapshots.test.mjs"
+    "test": "node --test test/guard.test.mjs test/features.test.mjs test/snapshots.test.mjs test/audit-log.test.mjs"
   }
 }

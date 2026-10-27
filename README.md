@@ -461,6 +461,16 @@ web_search: ask by "params queries=*secret*" [params]
 `/guard-undo [list|<id>]` rolls back a pre-write snapshot; see
 [Snapshots and undo](#snapshots-and-undo).
 
+`/guard-log [n]` prints the last n decisions (default 20, max 200) from
+`audit.jsonl`, read as a bounded tail rather than parsing the whole file:
+
+```
+/guard-log
+00:11:22  deny   bash  rm -rf ~*
+00:11:19  ask    bash  git push *  [subagent]
+00:11:15  allow  web_search  params queries=*secret*
+```
+
 All three are registered when the `commands` service is mounted; without it they
 are simply absent. A command that takes arguments must declare `input`, or the
 Client treats `/name args` as ordinary chat — the reason all three ship an

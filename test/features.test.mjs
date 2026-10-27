@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '0.7.0');
+    assert.equal(status.version, '0.7.1');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -732,4 +732,25 @@ test('the settings API rejects a non-loopback cross-origin caller', async () => 
     await routes.get('/api/dsh-guard/state')(req, res);
     assert.equal(res.status, 403);
   });
+});
+
+// ---------------------------------------------------------------- audit tail
+
+test('readTail returns the newest rows from a large file', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'guard-log-'));
+  const file = join(dir, 'audit.jsonl');
+  const lines = [];
+  for (let index = 0; index < 5000; index += 1) {
+    lines.push(JSON.stringify({ at: '2026-10-28T00:00:00.000Z', tool: `t${index}`, state: 'allow', pad: 'x'.repeat(60) }));
+  }
+  await writeFile(file, lines.join('\n') + '\n');
+  const { readTail, describeDecision } = await import('../lib/audit-log.js');
+
+  const rows = readTail(file, 3);
+  assert.equal(rows.length, 3);
+  assert.equal(rows.at(-1).tool, 't4999', 'the window starts mid-file and drops the partial line');
+  assert.match(describeDecision(rows.at(-1)), /allow  t4999/);
+
+  assert.equal(readTail(join(dir, 'missing.jsonl'), 5).length, 0);
+  await rm(dir, { recursive: true, force: true });
 });
