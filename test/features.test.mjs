@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '0.6.1');
+    assert.equal(status.version, '0.6.2');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -689,6 +689,10 @@ test('the settings API exposes switches and writes them through validation', asy
     assert.equal(stateRes.status, 200);
     const state = JSON.parse(stateRes.body);
     assert.equal(state.config.enforce, true);
+    assert.equal(typeof state.config.snapshotRetain, 'number');
+    assert.equal(typeof state.config.snapshotMaxBytes, 'number');
+    assert.equal(typeof state.config.repeatLimit, 'number');
+    assert.equal(typeof state.config.auditMaxBytes, 'number');
     assert.ok(Array.isArray(state.presets));
     assert.ok(state.policyPath.endsWith('policy.json'));
 

@@ -398,6 +398,8 @@ surface, next to other plugins). It edits only the switches and scalar knobs:
 |---|---|
 | `enforce` / `yolo` / `snapshots` / `audit` | the four booleans |
 | `repeatLimit` / `repeatWindowMs` / `repeatAction` | loop detection |
+| `snapshotMaxFiles` / `snapshotMaxBytes` / `snapshotRetain` | snapshot capacity |
+| `auditMaxBytes` | audit rotation threshold |
 | preset selector | `baseline` / `strict` / `off`, merged like `/guard-policy` |
 | recent decisions | read-only, last 10 |
 | snapshot list | read-only, last 8; roll back with `/guard-undo` |
