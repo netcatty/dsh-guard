@@ -243,6 +243,12 @@ instead.
 The block is sent as a fenced Markdown code block, because the dialog renders
 `detail` as Markdown and bare newlines would collapse into spaces.
 
+For `write` calls the card also carries **打开双栏对比**: a link to
+`/api/dsh-guard/diff?id=…`, an HTML page that pairs old and new lines row by row
+with red/green highlighting. Entries live in memory for 10 minutes (24 at most)
+and are never written to disk — the card itself cannot hold a component, so this
+is the only way to show a real two-column view.
+
 It is read-only: a preview that cannot be built is simply omitted, and it never
 blocks or delays the approval beyond one bounded read.
 
