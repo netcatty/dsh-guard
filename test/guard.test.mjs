@@ -107,7 +107,9 @@ test('per-tool rules compose with the cross-cutting surface', async () => {
   const p = { ...permission, tools: { read: { '*.md': 'deny' }, grep: { '*': 'deny' } } };
   assert.equal((await decide({ name: 'read', arguments: { file_path: 'notes.md' } }, cwd, p)).state, 'deny');
   assert.equal(await decide({ name: 'write', arguments: { file_path: 'notes.md' } }, cwd, p), undefined);
-  assert.equal((await decide({ name: 'grep', arguments: { pattern: 'x' } }, cwd, p)), undefined);
+  // `tools.<name>` also covers a call that carries no path argument: the rule
+  // map is matched against the tool name, so `"*"` means "every call to it".
+  assert.equal((await decide({ name: 'grep', arguments: { pattern: 'x' } }, cwd, p)).state, 'deny');
 });
 
 test('invalid configuration fails closed', async () => {
