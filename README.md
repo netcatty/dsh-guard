@@ -234,10 +234,17 @@ For `write` and `edit` the prompt carries a preview, not just the rule name:
 + ...
 ```
 
-The current bytes are read from disk (capped at 128 KB) and compared by line
-count, with the first six lines of each side. `edit` shows the replaced fragment
-instead. It is read-only: a preview that cannot be built is simply omitted, and
-it never blocks or delays the approval beyond one bounded read.
+The current bytes are read from disk (capped at 128 KB) and diffed against the
+incoming content: common prefix and suffix are trimmed, and the window around the
+real change is shown with three lines of context. A one-word edit therefore shows
+the line it touches, not the head of the file. `edit` shows the replaced fragment
+instead.
+
+The block is sent as a fenced Markdown code block, because the dialog renders
+`detail` as Markdown and bare newlines would collapse into spaces.
+
+It is read-only: a preview that cannot be built is simply omitted, and it never
+blocks or delays the approval beyond one bounded read.
 
 ## Dry run
 
