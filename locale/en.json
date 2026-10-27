@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Permission Guard",
+    "description": "allow / ask / deny gates for tool calls across path, shell, params, agents and network, with an approval dialog, pre-write snapshots, audit and rollback."
+  }
+}
