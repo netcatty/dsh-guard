@@ -171,7 +171,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '0.3.1');
+    assert.equal(status.version, '0.3.3');
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });
@@ -381,4 +381,82 @@ test('the loader ignores $schema and parses a commented policy', async () => {
     const permission = mergePermission({});
     assert.equal(permission['*'], 'deny');
   });
+});
+
+// ---------------------------------------------------------------- recent window
+
+test('recentDecisions keeps the newest ten decisions, newest first', async () => {
+  await withHome(async () => {
+    const { ctx, listeners } = ctxStub();
+    apply(ctx, { audit: false });
+    const pre = listeners.get('tools/pre-execute');
+    for (let index = 0; index < 12; index += 1) {
+      await pre(
+        { name: `probe-${index}`, arguments: {}, agent: { session: { id: 's1' } }, callId: `c${index}` },
+        () => 'NEXT',
+      );
+    }
+    const status = JSON.parse(await readFile(statusPath(), 'utf8'));
+    assert.equal(status.recentDecisions.length, 10);
+    assert.equal(status.recentDecisions[0].tool, 'probe-11');
+    assert.equal(status.recentDecisions[9].tool, 'probe-2');
+  });
+});
+
+test('the recent window is recorded even when the audit file is off', async () => {
+  await withHome(async () => {
+    const { ctx, listeners } = ctxStub();
+    apply(ctx, { audit: false });
+    const pre = listeners.get('tools/pre-execute');
+    await pre({ name: 'probe', arguments: {}, agent: { session: { id: 's1' } }, callId: 'c1' }, () => 'NEXT');
+    const status = JSON.parse(await readFile(statusPath(), 'utf8'));
+    assert.equal(status.recentDecisions[0].tool, 'probe');
+  });
+});
+
+// ---------------------------------------------------------------- project chain
+
+async function projectTree() {
+  const repo = await mkdtemp(join(tmpdir(), 'guard-repo-'));
+  const pkg = join(repo, 'pkg');
+  await mkdir(join(repo, '.dsh'), { recursive: true });
+  await mkdir(join(pkg, '.dsh'), { recursive: true });
+  await writeFile(join(repo, '.dsh', 'guard-policy.json'), JSON.stringify({
+    permission: { bash: { 'root-only *': 'deny', 'shared *': 'deny' } },
+  }));
+  await writeFile(join(pkg, '.dsh', 'guard-policy.json'), JSON.stringify({
+    permission: { bash: { 'near-only *': 'deny', 'shared *': 'allow' } },
+  }));
+  return { repo, pkg };
+}
+
+test('project rules stack from the repository root down to the cwd', async () => {
+  const { repo, pkg } = await projectTree();
+  const { ctx, listeners } = ctxStub({ workingDirectory: { ensure: async () => pkg } });
+  apply(ctx, { audit: false });
+  const pre = listeners.get('tools/pre-execute');
+  const run = (command, id) => pre(
+    { name: 'bash', arguments: { command }, agent: { session: { id: 's1' } }, callId: id },
+    () => 'NEXT',
+  );
+
+  assert.equal((await run('root-only x', 'c1')).kind, 'deny', 'the repository-root rule applies inside a package');
+  assert.equal((await run('near-only x', 'c2')).kind, 'deny', 'the package rule applies too');
+  assert.equal(await run('shared x', 'c3'), 'NEXT', 'the nearer package file overrides the root rule');
+  await rm(repo, { recursive: true, force: true });
+});
+
+test('projectPolicySearchUp: false limits the read to the cwd', async () => {
+  const { repo, pkg } = await projectTree();
+  const { ctx, listeners } = ctxStub({ workingDirectory: { ensure: async () => pkg } });
+  apply(ctx, { audit: false, projectPolicySearchUp: false });
+  const pre = listeners.get('tools/pre-execute');
+  const run = (command, id) => pre(
+    { name: 'bash', arguments: { command }, agent: { session: { id: 's1' } }, callId: id },
+    () => 'NEXT',
+  );
+
+  assert.equal(await run('root-only x', 'c1'), 'NEXT', 'the root file is out of scope');
+  assert.equal((await run('near-only x', 'c2')).kind, 'deny', 'the cwd file still applies');
+  await rm(repo, { recursive: true, force: true });
 });

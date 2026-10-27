@@ -282,9 +282,16 @@ write-direction path surface, so `echo x > secret.env` is denied by path rules.
   redactor as tool results before it is written, so the trail never becomes the
   place a credential survives. The file rolls to `audit.jsonl.1` once it passes
   `auditMaxBytes` (default 5 MiB).
+- **Recent decisions**: the last 10 decisions stay in memory, newest first, and
+  appear as `recentDecisions` in `guard_status` and `status.json` — checking
+  what just happened never reads the audit file.
 - **Project policy**: `<project>/.dsh/guard-policy.json` with the same
   `permission` shape, merged over the global policy for sessions whose cwd is
-  that project (`projectPolicy: false` disables). Changes are picked up by
+  that project (`projectPolicy: false` disables). Rules **stack from the
+  filesystem root down to the cwd**, so a monorepo can keep a baseline at
+  `<repo>/.dsh/guard-policy.json` and override one package at
+  `<repo>/pkg/.dsh/guard-policy.json`; the nearest file wins for the same key
+  (`projectPolicySearchUp: false` reads only the cwd). Changes are picked up by
   mtime on the next call.
 - **Network rules**: `network: [{ match: { domains: ["evil.example"] },
   action: deny }]` matches hostnames from URLs in shell commands and tool
