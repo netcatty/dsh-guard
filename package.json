@@ -67,5 +67,8 @@
   ],
   "scripts": {
     "test": "node --test test/guard.test.mjs test/features.test.mjs test/snapshots.test.mjs test/audit-log.test.mjs test/diff-view.test.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
