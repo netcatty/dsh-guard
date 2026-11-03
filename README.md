@@ -443,10 +443,10 @@ write-direction path surface, so `echo x > secret.env` is denied by path rules.
   an escape character.
 - Tool basenames are split on both `/` and `\`.
 
-Windows-specific work still pending real-machine verification (install, run
-`node --test`, check `%USERPROFILE%` expansion, drive-relative paths, and
-PowerShell quoting). Windows separators and drive letters are normalized before
-matching; matching is case-insensitive on win32 by default.
+Verified on a real Windows machine: install, `node --test`, `%USERPROFILE%`
+expansion (both `~/` and `~\`), drive-relative paths, and PowerShell quoting.
+Separators and drive letters are normalized before matching; matching is
+case-insensitive on win32 by default.
 
 ## Settings page
 

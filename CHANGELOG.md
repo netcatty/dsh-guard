@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1
+
+Windows 实机验证后的一轮修复。
+
+### 修复
+
+- `expand` 不识别 `~\` 前缀，`~\Documents` 被当成相对路径拼到 cwd 下，路径规则漏判。
+- `~\` 展开后未归一化分隔符，POSIX 上会得到 `/home/u/\secret` 这种带反斜杠的路径，`~/secret*` 规则照样匹配不上。
+
+### 变更
+
+- README 的 Windows 章节从「待实机验证」改为已验证：安装、`node --test`、`%USERPROFILE%` 展开、盘符相对路径、PowerShell 引号处理。
+
 ## 0.2.0
 
 首个功能完整的版本。0.1.0 只有 `path` / `bash` 两个规则面和基础审批，此后每一轮都在补面。
