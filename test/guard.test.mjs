@@ -35,6 +35,9 @@ test('glob matcher is greedy across separators', () => {
   assert.equal(matches('*.env', '/a/b/notes.md'), false);
   assert.equal(expand('~/.ssh/id_rsa', cwd), join(home, '.ssh/id_rsa'));
   assert.equal(expand('src/a.js', cwd), join(cwd, 'src/a.js'));
+  // Windows users write the home prefix with a backslash; treating it as a
+  // relative path would let a `~\secret\*` rule miss entirely.
+  assert.equal(expand('~\\.ssh\\id_rsa', cwd), join(home, '.ssh\\id_rsa'));
 });
 
 test('path rules deny sensitive files and allow .env.example', async () => {
