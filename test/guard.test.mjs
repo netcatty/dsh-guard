@@ -36,8 +36,10 @@ test('glob matcher is greedy across separators', () => {
   assert.equal(expand('~/.ssh/id_rsa', cwd), join(home, '.ssh/id_rsa'));
   assert.equal(expand('src/a.js', cwd), join(cwd, 'src/a.js'));
   // Windows users write the home prefix with a backslash; treating it as a
-  // relative path would let a `~\secret\*` rule miss entirely.
-  assert.equal(expand('~\\.ssh\\id_rsa', cwd), join(home, '.ssh\\id_rsa'));
+  // relative path would let a `~\secret\*` rule miss entirely. The tail is
+  // normalised too: on POSIX a backslash is a valid file-name character, so
+  // resolving it verbatim would produce `/home/u/\secret` and miss the rule.
+  assert.equal(expand('~\\.ssh\\id_rsa', cwd), join(home, '.ssh/id_rsa'));
 });
 
 test('path rules deny sensitive files and allow .env.example', async () => {
