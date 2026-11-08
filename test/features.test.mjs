@@ -163,6 +163,7 @@ test('audit file rotates once it passes auditMaxBytes', async () => {
 // ---------------------------------------------------------------- data dir
 
 test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
+  const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   await withHome(async (home) => {
     const { ctx } = ctxStub();
     apply(ctx, { audit: false });
@@ -171,7 +172,7 @@ test('plugin data lives under $DSH_HOME/dsh-plugins/dsh-guard', async () => {
     // Regression: the first writeStatus() used to hit `commandRegistered` in its
     // temporal dead zone and fail silently, leaving no status file at all.
     const status = JSON.parse(await readFile(statusPath(), 'utf8'));
-    assert.equal(status.version, '0.2.1');
+    assert.equal(status.version, version);
     assert.equal(typeof status.config.enforce, 'boolean');
     assert.equal(status.dataDir, configDir());
   });

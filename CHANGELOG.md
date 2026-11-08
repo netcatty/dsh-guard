@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+### 修复
+
+- 脱敏漏掉 JSON 形态的复合键名：`"OXIDETERM_MCP_TOKEN": "..."`、`"sessionToken": "..."` 这类键名前/后缀带词的凭据值会原样落盘，只有精确等于 `token`/`secret`/`password` 等白名单键名的才被遮。规则改为键名任意位置命中 `token|api_key|apikey|secret|password|passwd|authorization|private_key|access_key` 即脱敏，与 `KEY=value` 那条口径对齐。
+
 ## 0.2.1
 
 Windows 实机验证后的一轮修复。

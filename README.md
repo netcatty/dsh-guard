@@ -540,7 +540,9 @@ Client treats `/name args` as ordinary chat — the reason all three ship an
 `tools/post-execute` replaces credential-shaped text in every tool result before
 it is persisted: `sk-*`/`rk-*`/`pk-*` keys, GitHub tokens (`ghp_`, `gho_`,
 `github_pat_`), Slack tokens, AWS access keys, Google API keys, JWTs, `Bearer`
-tokens, PEM private-key blocks, and `SECRET|TOKEN|PASSWORD|API_KEY=...` values.
+tokens, PEM private-key blocks, `SECRET|TOKEN|PASSWORD|API_KEY=...` values, and
+JSON string fields whose key name contains `TOKEN` / `SECRET` / `PASSWORD` /
+`API_KEY` / `AUTHORIZATION` anywhere (`"OXIDETERM_MCP_TOKEN": "..."` included).
 Only text blocks change; images and structured blocks pass through. Set
 `redact: false` to disable.
 

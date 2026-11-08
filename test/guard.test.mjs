@@ -103,6 +103,13 @@ test('redactText masks credential shapes', () => {
   assert.equal(redactText('token Bearer abcdefgh12345678'), 'token Bearer ***');
   assert.equal(redactText('API_TOKEN=supersecretvalue'), 'API_TOKEN=***');
   assert.equal(redactText('ghp_' + 'b'.repeat(24)), '***');
+  assert.equal(
+    redactText('{"OXIDETERM_MCP_TOKEN": "b7f1c2d3e4f5a6b7"}'),
+    '{"OXIDETERM_MCP_TOKEN":"***"}',
+  );
+  assert.equal(redactText('{"sessionToken": "abcdef123456"}'), '{"sessionToken":"***"}');
+  assert.equal(redactText('{"dataStore": {"maxTokens": 32768}}'), '{"dataStore": {"maxTokens": 32768}}');
+  assert.equal(redactText('{"monkey": "banana"}'), '{"monkey": "banana"}');
   const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----';
   assert.equal(redactText(pem), '[redacted private key]');
   assert.equal(redactText('plain text with no secrets'), 'plain text with no secrets');
