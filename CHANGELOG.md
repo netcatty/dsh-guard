@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+### 文档
+
+- README 标题改为 dsh-guard，与 dsh-mcp / dsh-session 保持一致（包名仍为 @netcatty/dsh-guard）
+
 ## 0.2.3
 
 ### 文档

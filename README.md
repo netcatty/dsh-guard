@@ -1,4 +1,4 @@
-# @netcatty/dsh-guard
+# dsh-guard
 
 给 DeepSeek Harness 的工具调用加 allow / ask / deny 权限门。
 
