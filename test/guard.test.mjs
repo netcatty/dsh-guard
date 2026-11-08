@@ -114,6 +114,11 @@ test('redactText masks credential shapes', () => {
   assert.equal(redactText('{"settings.token": "abcdef123456"}'), '{"settings.token":"***"}');
   assert.equal(redactText('{"dataStore": {"maxTokens": 32768}}'), '{"dataStore": {"maxTokens": 32768}}');
   assert.equal(redactText('{"monkey": "banana"}'), '{"monkey": "banana"}');
+  // JSON nested inside a shell command has escaped quotes; masking must keep
+  // the escapes so the surrounding text stays readable and parseable.
+  assert.equal(redactText('{\\"token\\":\\"secret123\\"}'), '{\\"token\\":\\"***\\"}');
+  assert.equal(redactText('{\\"OXIDETERM_MCP_TOKEN\\":\\"b7f1c2\\"}'), '{\\"OXIDETERM_MCP_TOKEN\\":\\"***\\"}');
+  assert.equal(redactText('{\\"monkey\\":\\"banana\\"}'), '{\\"monkey\\":\\"banana\\"}');
   const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----';
   assert.equal(redactText(pem), '[redacted private key]');
   assert.equal(redactText('plain text with no secrets'), 'plain text with no secrets');
