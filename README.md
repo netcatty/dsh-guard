@@ -1,193 +1,171 @@
 # @netcatty/dsh-guard
 
-Allow / ask / deny gates for DeepSeek Harness tool calls.
+给 DeepSeek Harness 的工具调用加 allow / ask / deny 权限门。
 
-## Install
+## 安装
 
-From npm:
+从 npm 安装：
 
 ```sh
 dsh plugin --profile web add @netcatty/dsh-guard
 ```
 
-From a checkout (development):
+从本地检出的仓库安装（开发用）：
 
 ```sh
 git clone git@github.com:netcatty/dsh-guard.git ~/code/dsh-guard
 dsh plugin --profile web add link:~/code/dsh-guard
 ```
 
-No build step: the plugin is plain ESM. On Windows use the clone path, e.g.
-`dsh plugin --profile web add link:C:\code\dsh-guard`, then restart `dsh web`.
-The repository ships `policy.json`, so rules are versioned with the code and
-hot-reload while the plugin is mounted.
+无需构建步骤：插件是纯 ESM。Windows 上使用检出路径，例如
+`dsh plugin --profile web add link:C:\code\dsh-guard`，然后重启 `dsh web`。
+仓库自带 `policy.json`，规则因此与代码一起纳入版本管理，并在插件挂载期间热重载。
 
-## Data directory
+## 数据目录
 
-Every file the plugin owns lives in one place:
+插件写入的所有文件都放在同一处：
 
 ```
-$DSH_HOME/dsh-plugins/dsh-guard/policy.json   the live permission policy
-$DSH_HOME/dsh-plugins/dsh-guard/audit.jsonl   decision trail (rotates at auditMaxBytes)
-$DSH_HOME/dsh-plugins/dsh-guard/status.json   live status projection
-$DSH_HOME/dsh-plugins/dsh-guard/snapshots/    pre-write file copies (one dir per call)
+$DSH_HOME/dsh-plugins/dsh-guard/policy.json   生效中的权限策略
+$DSH_HOME/dsh-plugins/dsh-guard/audit.jsonl   判定记录（超过 auditMaxBytes 轮转）
+$DSH_HOME/dsh-plugins/dsh-guard/status.json   实时状态快照
+$DSH_HOME/dsh-plugins/dsh-guard/snapshots/    写前文件副本（每次调用一个目录）
 ```
 
-`$DSH_HOME` defaults to `~/.dsh`. Files written by earlier versions
-(`~/.dsh/guard-audit.jsonl`, `~/.dsh/guard-status.json`) move into that
-directory once per mount; `auditPath` overrides the audit location.
+`$DSH_HOME` 默认为 `~/.dsh`。旧版本写在别处的文件（`~/.dsh/guard-audit.jsonl`、
+`~/.dsh/guard-status.json`）会在每次挂载时迁移进来；`auditPath` 可以改审计位置。
 
-**The live policy is the data-directory copy.** The repository ships a
-`policy.json` too, but only as the seed: on the first mount of a fresh data
-directory it is copied to `dsh-plugins/dsh-guard/policy.json`, and from then on
-that copy is what runs. Editing the checkout therefore never changes behaviour,
-and a `git pull` never overwrites your rules. Deleting the live file falls back
-to the shipped seed until you write one again.
+**生效中的策略是数据目录里的那一份。** 仓库里也有 `policy.json`，但它只是种子：
+数据目录首次挂载时会被复制到 `dsh-plugins/dsh-guard/policy.json`，此后运行的一直是
+那份副本。因此改仓库不会影响行为，`git pull` 也不会覆盖你的规则。删掉生效文件会回退到
+种子策略，直到你重新写一份。
 
-## Editing the policy
+## 编辑策略
 
-The file is meant to be read and edited by hand, so it accepts everything strict
-JSON refuses:
+这个文件是给人手写的，所以它接受严格 JSON 拒绝的一切：
 
 ```jsonc
 {
-  "$schema": "./policy.schema.json",   // editor completion + validation
+  "$schema": "./policy.schema.json",   // 编辑器补全 + 校验
   "permission": {
     "*": "allow",
-    // destructive commands always ask
+    // 破坏性命令一律询问
     "bash": {
-      "git push *": "ask",   /* block comment too */
+      "git push *": "ask",   /* 块注释也可以 */
       "rm -rf /*": "deny",
     },
   },
 }
 ```
 
-- **Comments** — `//` to end of line, `/* … */` anywhere. A `//` inside a string
-  or URL is left alone.
-- **Trailing commas** — one after the last rule of an object or array is fine.
-- **`$schema`** — points an editor at `policy.schema.json` for completion and
-  inline validation; the loader strips it before reading rules.
-- **Errors stay loud** — anything beyond trivia (unquoted keys, single quotes)
-  still fails, and a bad policy fails closed rather than silently applying half
-  of it.
+- **注释** —— `//` 到行尾，`/* … */` 任意位置。字符串或 URL 里的 `//` 不受影响。
+- **尾随逗号** —— 对象或数组最后一项后面可以有。
+- **`$schema`** —— 让编辑器指向 `policy.schema.json`，获得补全与内联校验；加载器读取规则前会去掉它。
+- **错误依然会抛出** —— 注释和逗号之外的东西（未加引号的键、单引号）仍然失败；策略有错时按关闭处理，而不是悄悄生效一半。
 
-Edits hot-reload in about a second. Verify one before trusting it:
+改动约一秒内热重载。信任它之前先试算：
 
 ```
 /guard-test bash {"command":"git push origin main"}
 ```
 
-Nothing else needs to run: no command writes the policy, no UI owns it.
+除此之外不需要运行任何东西：没有命令会写策略，也没有界面独占它。
 
-## Surfaces
+## 规则面
 
-| Surface | Applies to | Notes |
+| 规则面 | 作用于 | 说明 |
 |---|---|---|
-| `path` | every file tool + bash path tokens | cross-cutting, both directions |
-| `pathRead` | `read`, `read_image`, `grep`, `glob` | direction-specific override |
-| `pathWrite` | `write`, `edit` | direction-specific override |
-| `externalDirectory` | paths outside the session cwd | defaults to allow |
-| `bash` | command text | glob, last matching rule wins |
-| `params` | any tool's arguments | key/value rules; covers tools with no path argument |
-| `toolParams` | one tool's arguments | like `params`, scoped to a tool-name glob |
-| `agents` | agent identity | `main` / `subagent` / `preset:<name>` |
+| `path` | 所有文件类工具 + bash 里的路径词元 | 横切，读写双向 |
+| `pathRead` | `read`、`read_image`、`grep`、`glob` | 按方向覆盖 |
+| `pathWrite` | `write`、`edit` | 按方向覆盖 |
+| `externalDirectory` | 会话 cwd 之外的路径 | 默认允许 |
+| `bash` | 命令文本 | glob，最后命中者胜 |
+| `params` | 任意工具的参数 | 键/值规则；覆盖没有路径参数的工具 |
+| `toolParams` | 单个工具的参数 | 同 `params`，限定到某个工具名 glob |
+| `agents` | Agent 身份 | `main` / `subagent` / `preset:<name>` |
 
-Matching uses `*` (greedy, crosses `/`) and `?`. Within one surface the **last**
-matching rule wins, so put broad rules first and exceptions after. Across
-surfaces the most restrictive result wins: `deny` > `ask` > `allow`.
+匹配使用 `*`（贪婪，跨 `/`）和 `?`。同一规则面内**最后**命中的规则生效，所以把宽的放前面、
+例外放后面。跨规则面取最严结果：`deny` > `ask` > `allow`。
 
-Path candidates include the literal argument, its cwd-resolved absolute form,
-its cwd-relative form, and its symlink-resolved target.
+路径候选包括：字面参数、按 cwd 解析的绝对路径、相对 cwd 的形式、以及解析符号链接后的目标。
 
-## Params
+## params
 
-`params` gates any argument of any tool, which is what the path surfaces cannot
-reach: `web_search` queries, `skill` names, MCP arguments that are not paths.
+`params` 拦截任意工具的参数，这是路径类规则面覆盖不到的地方：`web_search` 的查询词、
+`skill` 的名字、没有路径参数的 MCP 参数。
 
 ```yaml
 params:
-  query:            # matches the `query` key at any depth
+  query:            # 匹配任意层级的 `query` 键
     "*password*": deny
   command:
     "git push*": ask
 ```
 
-A key pattern matches either the full dotted path (`arguments.command`) or its
-leaf name (`command`), and array members are addressable by their container
-(`queries` covers `queries.0`, `queries.1`). Within one key's value map the last
-matching rule wins; across keys the most restrictive result wins.
+键模式可以匹配完整的点分路径（`arguments.command`）或叶子名（`command`）；数组元素通过容器
+寻址（`queries` 覆盖 `queries.0`、`queries.1`）。同一个键的值映射内最后命中者胜；跨键取最严。
 
-Set `patternMode: regex` to switch **this surface only** to regular expressions
-(`^git\s+push`). Path and command rules stay glob: switching them wholesale
-would break every `*.env` rule in an existing policy.
+设 `patternMode: regex` 可把**仅此规则面**切换为正则（`^git\s+push`）。路径与命令规则仍是 glob：
+整体切换会让既有策略里每一条 `*.env` 规则失效。
 
-## MCP tools
+## MCP 工具
 
-MCP tools are named `mcp__<server>__<tool>` and have no path argument of their
-own, so they need their own surfaces. All three forms work:
+MCP 工具命名为 `mcp__<server>__<tool>`，自身没有路径参数，因此需要独立的规则面。三种写法都可用：
 
 ```jsonc
 {
   "permission": {
-    // 1. one server at a time, by tool-name glob
+    // 1. 按工具名 glob 拦一整个服务
     "tools": {
       "mcp__chrome-devtools__*": { "*": "deny" }
     },
-    // 2. one tool's arguments, without touching other tools that happen to
-    //    use the same key (`fetch.url` stays free)
+    // 2. 只限某个工具的参数，不影响恰好用同名键的其他工具
+    //    （`fetch.url` 不受影响）
     "toolParams": {
       "mcp__chrome-devtools__navigate_page": {
         "url": { "https://prod-*": "deny" }
       }
     },
-    // 3. refuse one tool outright, before any argument is looked at
+    // 3. 在检查任何参数之前直接拒绝某个工具
     "denyTools": ["mcp__github__delete_repo"]
   }
 }
 ```
 
-`tools` keys are matched as globs against the tool name, and a tool with no path
-argument is matched by its own name — so `{ "*": "deny" }` means "every call to
-this tool". `toolParams` is `params` narrowed to one tool: `{ tool: { key: {
-value: state } } }`, with the same key matching (dotted path or leaf, array
-containers included).
+`tools` 的键按 glob 匹配工具名；没有路径参数的工具用自己的名字匹配，所以 `{ "*": "deny" }`
+表示“这个工具的每次调用都拒绝”。`toolParams` 是限定到单个工具的 `params`：
+`{ tool: { key: { value: state } } }`，键匹配规则相同（点分路径或叶子名，含数组容器）。
 
-## Agents
+## agents
 
 ```yaml
 agents:
-  subagent: deny        # delegated children never touch the filesystem
+  subagent: deny        # 派生的子代理不碰文件系统
   main: allow
-  preset:reader: ask    # a read-only preset must still confirm writes
+  preset:reader: ask    # 只读预设也必须确认写入
 ```
 
-The most specific identity wins: `preset:<name>` and `subagent:<name>` are
-tried before `subagent`/`main`. A forked session carries a `parentSession` but is
-**not** a subagent — identity follows the durable `origin: 'subagent'` marker.
+越具体的身份优先：先试 `preset:<name>` 和 `subagent:<name>`，再回落到 `subagent`/`main`。
+分叉会话带有 `parentSession`，但**不是**子代理——身份跟随持久的 `origin: 'subagent'` 标记。
 
-## Defaults
+## 默认值
 
-Sensitive paths are denied (`.env`, `*.env.*`, `id_rsa` family, `~/.ssh`,
-`~/.aws`, `~/.gnupg`, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`,
-`.docker/config.json`, `.kube/config`, `~/.config/gh/hosts.yml`,
-`~/.dsh/.credentials.yaml`); `*.env.example` is allowed.
+敏感路径默认拒绝（`.env`、`*.env.*`、`id_rsa` 系列、`~/.ssh`、`~/.aws`、`~/.gnupg`、
+`.netrc`、`.git-credentials`、`.npmrc`、`.pypirc`、`.docker/config.json`、`.kube/config`、
+`~/.config/gh/hosts.yml`、`~/.dsh/.credentials.yaml`）；`*.env.example` 允许。
 
-`ask` rules only make sense while the session approval policy is `ask`; under
-`never` an `ask` becomes a denial. Wrapper commands (`sudo`, `bash -c`, `eval`,
-`xargs`, `find -exec`) and everything else default to `allow`; opt into
-approval per surface:
+`ask` 规则只在会话审批策略为 `ask` 时有意义；在 `never` 下 `ask` 会变成拒绝。包装类命令
+（`sudo`、`bash -c`、`eval`、`xargs`、`find -exec`）和其他一切默认允许；按规则面选择性地要求学生审批：
 
 ```yaml
-wrappers: ask        # or deny
+wrappers: ask        # 或 deny
 bash:
   "sudo *": ask
 ```
 
-## Per-tool rules
+## 单工具规则
 
-`tools.<name>` applies path patterns to one tool on top of the cross-cutting
-surfaces:
+`tools.<name>` 在横切规则面之上，把路径模式限定到某个工具：
 
 ```yaml
 tools:
@@ -197,177 +175,138 @@ tools:
     "*/secrets/*": deny
 ```
 
-## Session approvals
+## 会话授权
 
-`sessionApprovals: true` remembers an ask that was actually approved (the tool
-then ran successfully) and auto-allows the same rule pattern for the rest of
-that session. It is off by default because it silently widens a one-time
-approval; turn it on only when `ask` is your normal posture.
+`sessionApprovals: true` 会记住真正被批准过的 ask（即工具随后执行成功），在本会话余下时间内
+自动放行同一规则模式。默认关闭，因为它会悄悄放大一次性批准；只有当你日常姿态就是 `ask` 时才打开。
 
-A grant is keyed by `(session, rule pattern)`, so approving `rm *` never widens
-to `git push *`. Both limits are opt-in:
+授权的键是 `(会话, 规则模式)`，所以批准 `rm *` 不会扩散到 `git push *`。两个上限都是可选的：
 
 ```yaml
-sessionApprovalTtlMs: 1800000   # 30 minutes; 0 = rest of the session
-sessionApprovalMaxUses: 3       # 0 = unlimited
+sessionApprovalTtlMs: 1800000   # 30 分钟；0 = 本会话余下时间
+sessionApprovalMaxUses: 3       # 0 = 不限次数
 ```
 
-## Three-option approval
+## 三选项审批
 
-`approvalMode: question` replaces the two-outcome DSH approval for guard asks with
-an explicit question carrying three choices: 允许一次 / 本会话允许 / 拒绝, plus
-**写入项目规则** when the hit is a flat surface (`path`, `pathRead`,
-`pathWrite`, `externalDirectory`, `bash`, `tools.<name>`). Choosing it appends
-`"<pattern>": allow` to `<cwd>/.dsh/guard-policy.json` and applies immediately —
-argv/network/params hits cannot be round-tripped into one rule and are refused
-rather than guessed at.
+`approvalMode: question` 用一个带选项的显式提问替代 DSH 的两结果审批：允许一次 / 本会话允许 / 拒绝，
+命中扁平规则面（`path`、`pathRead`、`pathWrite`、`externalDirectory`、`bash`、`tools.<name>`）时
+额外提供 **写入项目规则**。选中它会把 `"<pattern>": allow` 追加到 `<cwd>/.dsh/guard-policy.json`
+并立即生效——argv/network/params 的命中无法回填成单条规则，会直接拒绝而不是猜。
 
-A free-text "Other" answer becomes the denial reason the model sees, e.g.
-`dsh-guard: 用户拒绝 "rm *"：先用只读命令确认`. Only an explicit session choice
-records a standing allow — nothing is widened silently. When no question answerer
-is available the plugin falls back to the normal `ask` decision.
+自由文本的“其他”答案会成为模型看到的拒绝理由，例如
+`dsh-guard: 用户拒绝 "rm *"：先用只读命令确认`。只有显式选择会话授权才会记录常驻允许，
+不会有任何静默放大。没有可用的问询应答者时，插件回落到普通的 `ask` 判定。
 
-### Self-drawn dialog (`approvalMode: dialog`)
+### 自绘弹窗（`approvalMode: dialog`）
 
-`approvalMode: dialog` replaces the DSH question card with a dialog the plugin
-draws itself. Because it is our own DOM, it shows the change **side by side**
-instead of a text diff:
+`approvalMode: dialog` 用插件自己绘制的弹窗替代 DSH 问询卡片。因为 DOM 是自己的，它可以并排展示
+改动，而不只是文本 diff：
 
-- two columns, red for the old line, green for the new one, unchanged rows grey
+- 两栏，旧行标红、新行标绿、未变行灰色
 - `允许一次` / `本会话允许` / `写入项目规则` / `拒绝`
-- one request at a time, 120 s timeout (`dialogTimeoutMs `) then deny
+- 一次一个请求，默认 120 秒超时（`dialogTimeoutMs`）后拒绝
 
-Mechanism: `tools/pre-execute` parks a Promise in an in-memory map, the browser
-polls `GET /api/dsh-guard/pending`, and `POST /api/dsh-guard/decide` resolves it.
-If no Client is connected the request waits for the timeout, so this mode assumes
-the Web UI is open.
+机制：`tools/pre-execute` 把一个 Promise 挂进内存表，浏览器轮询 `GET /api/dsh-guard/pending`，
+由 `POST /api/dsh-guard/decide` 解挂。客户端靠 `POST /api/dsh-guard/hello` 注册并每 20 秒心跳，
+**没有在线客户端时立即拒绝**，拒绝理由会说明缺少审批界面，因此不会白等超时。
 
-### What the dialog shows
+### 弹窗里显示什么
 
-For `write` and `edit` the prompt carries a preview, not just the rule name:
+对 `write` 和 `edit`，提示里带改动预览，而不只是规则名：
 
 ```
 规则：tools.write
 改写 src/app.ts：120 → 118 行（-2）
---- 原
+@@ 第 40 行
 - import { old } from './old'
-- ...
-+++ 新
 + import { next } from './next'
-+ ...
 ```
 
-The current bytes are read from disk (capped at 128 KB) and diffed against the
-incoming content: common prefix and suffix are trimmed, and the window around the
-real change is shown with three lines of context. A one-word edit therefore shows
-the line it touches, not the head of the file. `edit` shows the replaced fragment
-instead.
+当前磁盘内容（上限 128 KB）会与即将写入的内容做差异比对：裁掉公共前后缀，只显示真实改动附近
+的窗口，带三行上下文。因此改一个词时看到的是那一行，而不是文件开头。`edit` 则显示被替换的片段。
 
-The block is sent as a fenced Markdown code block, because the dialog renders
-`detail` as Markdown and bare newlines would collapse into spaces.
+这段内容以 Markdown 代码块下发，因为弹窗按 Markdown 渲染 `detail`，裸换行会被折叠成空格。
 
-Set `webBase` to the browser origin of this Web UI (for example
-`http://192.168.1.10:3088`) so approval cards can link to the diff page. The
-plugin cannot discover that origin by itself: `webApp` is not visible from the
-plugin scope and the host process has no `DSH_WEB_URL`. Without it the card still
-shows the text preview, just no link.
+把 `webBase` 设成这个 Web UI 的浏览器源（例如 `http://192.168.1.10:3088`），审批卡片就能链接到
+对比页。插件自己发现不了这个源：`webApp` 在插件作用域内不可见，宿主进程也没有 `DSH_WEB_URL`。
+不配置时卡片仍有文本预览，只是没有链接。
 
-For `write` calls the card also carries **打开双栏对比**: a link to
-`/api/dsh-guard/diff?id=…`, an HTML page that pairs old and new lines row by row
-with red/green highlighting. Entries live in memory for 10 minutes (24 at most)
-and are never written to disk — the card itself cannot hold a component, so this
-is the only way to show a real two-column view.
+`write` 的卡片还会带 **打开双栏对比**：指向 `/api/dsh-guard/diff?id=…` 的链接，那是一个红绿高亮、
+逐行配对的 HTML 页面。条目在内存里保存 10 分钟（最多 24 条），从不落盘——卡片本身装不下组件，
+这是展示真正双栏视图的唯一方式。
 
-It is read-only: a preview that cannot be built is simply omitted, and it never
-blocks or delays the approval beyond one bounded read.
+整个预览是只读的：构建不出来就省略，绝不会在有限读取之外阻塞或延迟审批。
 
-## Dry run
+## 试运行
 
-`enforce: false` audits what the rules **would** have done and lets every call
-through, with `dryRun: true` on the audit row:
+`enforce: false` 只记录规则**本会**怎么做，并放行所有调用，审计行带 `dryRun: true`：
 
 ```yaml
 enforce: false
 ```
 
-Use it to tune a policy without locking yourself out. `deny` is not exempt:
-dry-run means dry-run for everything.
+用来在不把自己锁死的前提下调策略。`deny` 也不豁免：试运行就是对一切都试运行。
 
-## Snapshots and undo
+## 快照与回滚
 
-A `write` or `edit` call destroys the previous bytes as soon as it lands. Before
-letting one through, the plugin copies the target file into
-`snapshots/<id>/` and records the id on the audit row, so a bad edit is
-recoverable whether it failed or succeeded:
+`write` 或 `edit` 一落地就销毁了原有字节。放行之前，插件会把目标文件复制到 `snapshots/<id>/`，
+并在审计行记下 id，所以无论是失败还是成功，坏改动都可恢复：
 
 ```
-/guard-undo          roll back the most recent snapshot
-/guard-undo list     the last 10 snapshots (id, time, tool, files)
-/guard-undo <id>     roll back one specific snapshot
+/guard-undo          回滚最近一次快照
+/guard-undo list     最近 10 个快照（id、时间、工具、文件）
+/guard-undo <id>     回滚指定快照
 ```
 
-Restore rewrites the saved bytes and deletes files that did not exist at capture
-time. It does **not** silently skip: a file over `snapshotMaxBytes` or a
-non-regular path is reported as skipped.
+回滚会重写保存的字节，并删除采集时不存在的文件。它**不会**静默跳过：超过 `snapshotMaxBytes`
+的文件或非普通文件会被报告为跳过。
 
 ```yaml
-snapshots: true           # default
-snapshotMaxFiles: 20      # per call
-snapshotMaxBytes: 262144  # per file; larger ones are marked skipped
-snapshotRetain: 100       # snapshot dirs kept, oldest pruned
+snapshots: true           # 默认
+snapshotMaxFiles: 20      # 每次调用
+snapshotMaxBytes: 262144  # 每个文件；更大的标记为跳过
+snapshotRetain: 100       # 保留的快照目录数，最旧的会被清掉
 ```
 
-Denied writes are never snapshotted (nothing was going to change), and a capture
-failure never blocks the call — it just leaves nothing to undo.
+被拒绝的写入不做快照（本来就不会改），采集失败也绝不阻塞调用——只是没有东西可回滚。
 
-## Loop detection
+## 循环检测
 
-A model stuck repeating one identical call is a different failure from a
-dangerous one, and rules cannot see it: every individual call may be allowed.
-The gate counts byte-identical calls (same tool, same arguments) inside a
-window and asks once the count is reached:
+模型卡在重复同一次调用，是与危险调用不同的失败模式，规则看不出来：每一次单独的调用可能都合法。
+这个闸门统计窗口内字节完全相同的调用（同工具、同参数），达到次数就问一次：
 
 ```yaml
-repeatLimit: 5          # 0 = off (default)
-repeatWindowMs: 60000   # rolling window
+repeatLimit: 5          # 0 = 关闭（默认）
+repeatWindowMs: 60000   # 滚动窗口
 repeatAction: ask       # allow | ask | deny
 ```
 
-`repeatLimit: 5` means the fifth identical call asks; the counter resets once
-`repeatWindowMs` passes without a repeat. Different arguments are a different
-call, so a loop that varies its input is not caught — this targets the stuck
-case, not a determined adversary.
+`repeatLimit: 5` 表示第 5 次相同调用触发询问；`repeatWindowMs` 内没有重复后计数重置。参数不同就是
+不同调用，所以会变化输入的循环抓不到——它针对的是卡住的情况，不是蓄意绕过。
 
-## Blocking tools by name
+## 按名拦截工具
 
-`denyTools: [write, edit]` refuses those tools outright — a read-only posture.
-It blocks calls rather than hiding schemas; hiding needs an agent-scoped
-`ctx.tools.restrict`, which this plugin does not have from the profile root.
+`denyTools: [write, edit]` 直接拒绝这些工具，形成只读姿态。它拦截调用而不是隐藏 schema；
+隐藏需要 Agent 作用域的 `ctx.tools.restrict`，而插件从 profile 根拿不到这个能力。
 
-## Config validation
+## 配置校验
 
-Every rule state is validated (`allow`/`ask`/`deny`, map shapes, boolean
-switches, array `denyTools`). An invalid configuration **fails closed**: every
-tool call is denied with the validation errors in the reason. Fix the config and
-the next mount restores normal operation.
+每一条规则状态都会被校验（`allow`/`ask`/`deny`、映射形状、布尔开关、`denyTools` 数组）。
+配置无效时**按关闭处理**：每次工具调用都被拒绝，理由里带上校验错误。修好配置后，下次挂载恢复正常。
 
-## Command rules
+## 命令规则
 
-The shipped profile starts from pi's bash policy: destructive, publishing,
-network, installer and build commands ask (three-option card in `question`
-mode), while `rm -rf /` and `rm -rf ~*` deny. See `cordis.patch.yml` in the
-profile for the full list.
+随附的配置从 pi 的 bash 策略出发：破坏性、发布、网络、安装器与构建类命令走询问（`question`
+模式下是三选项卡片），而 `rm -rf /` 和 `rm -rf ~*` 拒绝。完整列表见 profile 里的 `cordis.patch.yml`。
 
-Bash tokens are gated only when they look like paths (`/`, `~`, leading `.`,
-denied basenames, or a `.env`/`.pfx`/`.p12` suffix), so identifiers such as
-`process.env.HOME` are not mistaken for dotenv files.
+bash 里的词元只有在看起来像路径时才被拦截（含 `/`、`~`、以 `.` 开头、命中拒绝基名、或以
+`.env`/`.pfx`/`.p12` 结尾），所以 `process.env.HOME` 这类标识符不会被误认成 dotenv 文件。
 
-## argv surface (lexical shell decomposition)
+## argv 面（词法级 shell 分解）
 
-`argv` rules run on a best-effort decomposition of a bash command line: split
-on `|`, `||`, `;`, `&&`, `&` and newlines, then each simple command into
-command word, argument tokens and redirect targets (quote/escape aware).
-Command substitution, backticks and brace expansion stay opaque.
+`argv` 规则跑在尽力而为的命令行分解上：先按 `|`、`||`、`;`、`&&`、`&` 和换行切分，再把每个简单命令
+拆成命令词、参数词元和重定向目标（引号/转义感知）。命令替换、反引号和花括号展开保持不透明。
 
 ```yaml
 argv:
@@ -379,136 +318,105 @@ argv:
     action: ask
 ```
 
-Fields: `command` (any simple command word matches), `args` (every pattern
-matches some token), `anyArg` (some token matches a pattern; `!` negates),
-`pipeline` (command words joined by `|`). Redirect targets also go through the
-write-direction path surface, so `echo x > secret.env` is denied by path rules.
+字段：`command`（任一简单命令词命中）、`args`（每个模式都要命中某个词元）、`anyArg`（存在某个词元命中；
+`!` 取反）、`pipeline`（用 `|` 连接的��令词）。重定向目标还会走写入方向的路径规则面，所以
+`echo x > secret.env` 会被路径规则拒绝。
 
-## Hot reload, audit, project policy, network
+## 热重载、审计、项目策略、网络
 
-- **Hot reload**: `policy.json` is watched (1s poll). A valid edit replaces the
-  live policy without restarting; an invalid edit is rejected and logged.
-- **Audit**: every decision appends one JSON line to
-  `$DSH_HOME/dsh-plugins/dsh-guard/audit.jsonl` (`auditPath` to change,
-  `audit: false` to disable). The `args` field is passed through the same
-  redactor as tool results before it is written, so the trail never becomes the
-  place a credential survives. The file rolls to `audit.jsonl.1` once it passes
-  `auditMaxBytes` (default 5 MiB).
-- **Recent decisions**: the last 10 decisions stay in memory, newest first, and
-  appear as `recentDecisions` in `guard_status` and `status.json` — checking
-  what just happened never reads the audit file.
-- **Project policy**: `<project>/.dsh/guard-policy.json` with the same
-  `permission` shape, merged over the global policy for sessions whose cwd is
-  that project (`projectPolicy: false` disables). Rules **stack from the
-  filesystem root down to the cwd**, so a monorepo can keep a baseline at
-  `<repo>/.dsh/guard-policy.json` and override one package at
-  `<repo>/pkg/.dsh/guard-policy.json`; the nearest file wins for the same key
-  (`projectPolicySearchUp: false` reads only the cwd). Changes are picked up by
-  mtime on the next call. Merging is **per key, not per table**: a project file
-  that sets `tools.write` for one path keeps every inherited write rule.
+- **热重载**：监听 `policy.json`（1 秒轮询）。有效改动无需重启即可替换生效策略；无效改动会被拒绝并记日志。
+- **审计**：每次判定向 `$DSH_HOME/dsh-plugins/dsh-guard/audit.jsonl` 追加一行 JSON
+  （`auditPath` 改位置，`audit: false` 关闭）。`args` 字段在写入前会过一遍与工具结果相同的脱敏器，
+  所以记录不会成为凭据侥幸存活的地方。文件超过 `auditMaxBytes`（默认 5 MiB）后轮转为 `audit.jsonl.1`。
+- **最近判定**：最近 10 条判定留在内存里，最新的在前，通过 `guard_status` 和 `status.json` 的
+  `recentDecisions` 暴露——查看刚发生了什么不需要读审计文件。
+- **项目策略**：`<project>/.dsh/guard-policy.json`，同样的 `permission` 结构，对 cwd 在该项目内的
+  会话叠加到全局策略之上（`projectPolicy: false` 关闭）。规则**从文件系统根一路叠加到 cwd**，所以
+  monorepo 可以在 `<repo>/.dsh/guard-policy.json` 放基线，再在 `<repo>/pkg/.dsh/guard-policy.json`
+  覆盖某个包；同一个键以最近的为准（`projectPolicySearchUp: false` 只读 cwd）。改动按 mtime 在下次
+  调用时生效。合并是**按 key，不是按表**：项目文件给某个路径设了 `tools.write`，继承来的其他写规则依然保留。
 
-  A project rule may be `null`, which **removes** the inherited rule instead of
-  setting one. This is the only way to relax a global rule for one project
-  without rewriting the global file:
+  项目规则可以是 `null`，表示**删除**继承来的规则而不是设置一条。这是在不重写全局文件的前提下，
+  为单个项目放宽全局规则的唯一办法：
 
   ```jsonc
   {
     "permission": {
-      "bash": { "rm *": null },   // stop asking for rm in this project
-      "tools": { "write": null }  // drop the whole inherited table
+      "bash": { "rm *": null },   // 本项目内不再为 rm 询问
+      "tools": { "write": null }  // 丢掉整张继承表
     }
   }
   ```
 
-  In the global file `null` is accepted but has no effect — nothing is inherited
-  behind it, so the rule simply does not exist.
-- **Network rules**: `network: [{ match: { domains: ["evil.example"] },
-  action: deny }]` matches hostnames from URLs in shell commands and tool
-  arguments (`url`, `endpoint`, …). This is static inspection, not a proxy.
-- **yolo**: `yolo: true` turns every `ask` into allow; `deny` still blocks.
-  `sandboxAware` (default) does that automatically under `danger-full-access`
-  and `read-only`.
+  在全局文件里写 `null` 会被接受但没有效果——它背后没有可删的继承内容，规则就是不存在。
+- **网络规则**：`network: [{ match: { domains: ["evil.example"] }, action: deny }]` 匹配 shell 命令和
+  工具参数（`url`、`endpoint` 等）里 URL 的主机名。这是静态检查，不是代理。
+- **yolo**：`yolo: true` 把所有 `ask` 变成允许；`deny` 仍然拦截。`sandboxAware`（默认开启）会在
+  `danger-full-access` 和 `read-only` 下自动这么做。
 
 ## Windows
 
-- Backslashes are normalized to `/` for matching; drive letters are preserved
-  (`C:\Users\…` matches `*.env`, `*/.ssh/*`, …).
-- Matching is case-insensitive when `caseInsensitivePaths` is true (default:
-  `process.platform === 'win32'`). Set it explicitly on other platforms only if
-  the policy targets a case-insensitive filesystem.
-- The `pwsh` (and `powershell`) tool reuses the same command surface as bash:
-  `bash` rules, `argv` decomposition, opaque-construct checks and redirect
-  targets all apply.
-- In shell decomposition a backslash is a path separator on Windows rather than
-  an escape character.
-- Tool basenames are split on both `/` and `\`.
+- 匹配前反斜杠归一化为 `/`；盘符保留（`C:\Users\…` 能命中 `*.env`、`*/.ssh/*` 等）。
+- `caseInsensitivePaths` 为 true 时匹配忽略大小写（默认：`process.platform === 'win32'`）。只有在策略
+  面向大小写不敏感文件系统时，才需要在其他平台显式设置。
+- `pwsh`（和 `powershell`）工具复用与 bash 相同的命令规则面：`bash` 规则、`argv` 分解、不透明构造检查、
+  重定向目标都生效。
+- shell 分解时，反斜杠在 Windows 上是路径分隔符，而不是转义字符。
+- 工具基名按 `/` 和 `\` 双分隔符切分。
 
-Verified on a real Windows machine: install, `node --test`, `%USERPROFILE%`
-expansion (both `~/` and `~\`), drive-relative paths, and PowerShell quoting.
-Separators and drive letters are normalized before matching; matching is
-case-insensitive on win32 by default.
+已在真实 Windows 机器上验证：安装、`node --test`、`%USERPROFILE%` 展开（`~/` 与 `~\` 两种写法）、
+盘符相对路径、PowerShell 引号处理。分隔符与盘符在匹配前归一化；win32 上默认忽略大小写匹配。
 
-## Settings page
+## 设置页
 
-A **dsh-guard** tab appears under 设置 → 内置插件 (the shared plugin settings
-surface, next to other plugins). It edits only the switches and scalar knobs:
+设置 → 内置插件 下会出现 **dsh-guard** 标签（与其他插件共用的插件设置界面）。它只改开关和标量：
 
-| Control | Writes |
+| 控件 | 写入 |
 |---|---|
-| `enforce` / `yolo` / `snapshots` / `audit` | the four booleans |
-| `repeatLimit` / `repeatWindowMs` / `repeatAction` | loop detection |
-| `snapshotMaxFiles` / `snapshotMaxBytes` / `snapshotRetain` | snapshot capacity |
-| `auditMaxBytes` | audit rotation threshold |
-| preset selector | `baseline` / `strict` / `off`, merged like `/guard-policy` |
-| recent decisions | read-only, last 10 |
-| snapshot list | read-only, last 8; roll back with `/guard-undo` |
+| `enforce` / `yolo` / `snapshots` / `audit` | 四个布尔开关 |
+| `repeatLimit` / `repeatWindowMs` / `repeatAction` | 循环检测 |
+| `snapshotMaxFiles` / `snapshotMaxBytes` / `snapshotRetain` | 快照容量 |
+| `auditMaxBytes` | 审计轮转阈值 |
+| 模板选择器 | `baseline` / `strict` / `off`，合并方式与 `/guard-policy` 相同 |
+| 最近判定 | 只读，最近 10 条 |
+| 快照列表 | 只读，最近 8 条；用 `/guard-undo` 回滚 |
 
-Every write goes through `POST /api/dsh-guard/config`, which runs the same
-`applyPatch` + `validate` + backup path as the command, so the panel cannot
-produce a policy a hand edit could not. Rules themselves stay in `policy.json`:
-they are nested maps with unlimited combinations, and a form covering them would
-end up as a JSON textarea anyway.
+所有写入都走 `POST /api/dsh-guard/config`，与命令行跑同一条 `applyPatch` + `validate` + 备份路径，
+所以面板无法产生手改做不到的策略。规则本身留在 `policy.json`：它们是无上限组合的嵌套映射，
+用表单覆盖最终也只会变成一个 JSON 文本域。
 
-The route fence is loopback-or-same-origin, the same one every plugin uses.
+路由围栏是回环或同源，与其他插件一致。
 
-## Commands
+## 命令
 
-`policy.json` is the source of truth. `/guard-policy` writes it from the
-composer; `/guard-test` and `/guard-undo` never touch it.
+`policy.json` 是唯一事实来源。`/guard-policy` 从输入框写它；`/guard-test` 和 `/guard-undo` 从不碰它。
 
-`/guard-policy` deep-merges a JSON fragment into the live policy, validates the
-result, backs up the previous file, and lets the hot reload apply it:
+`/guard-policy` 把一个 JSON 片段深合并进生效策略，校验结果，备份上一份文件，然后由热重载应用：
 
 ```
 /guard-policy list
 /guard-policy {"bash":{"rm *":"ask"}}
 /guard-policy {"toolParams":{"navigate_page":{"url":{"https://prod-*":"deny"}}}}
-/guard-policy {"bash":{"rm *":null}}          # null removes a rule
+/guard-policy {"bash":{"rm *":null}}          # null 删除一条规则
 /guard-policy preset list
 /guard-policy preset baseline
 ```
 
-Templates are named fragments merged the same way, so they can only write what a
-hand edit could. Three ship:
+模板是同样方式合并的命名片段，因此只能写出与手改等价的东西。随附三个：
 
-| Template | What it writes |
+| 模板 | 写入内容 |
 |---|---|
 | `baseline` | 外部目录 ask、`rm`/`git push`/`sudo` ask、写 `*.env` deny、子代理 ask、`repeatLimit: 5` |
 | `strict` | 命令与写入全部 ask、外部目录 deny、子代理 deny、`repeatLimit: 3` |
 | `off` | `enforce: false`（只审计不拦截）、`repeatLimit: 0` |
 
-A template merges, it does not replace: applying `strict` leaves your existing
-`path` rules alone.
+模板是合并而不是替换：应用 `strict` 不会动你已有的 `path` 规则。
 
-One grammar for every nesting depth, no separator to escape. A fragment that
-fails validation is rejected and the file is left untouched. A rewrite
-normalizes the file, so hand-written comments are lost; the previous text stays
-at `policy.json.bak`, and for comment-preserving edits you can still edit the
-file directly.
+一套语法覆盖所有嵌套层级，没有需要转义的分隔符。校验失败的片段会被拒绝，文件保持原样。重写会
+规范化文件，因此手写的注释会丢失；之前的文本留在 `policy.json.bak`，需要保留注释时仍可直接编辑文件。
 
-`/guard-test <tool> <json>` dry-evaluates one call against the live policy
-without executing it — the same decision the gate would reach, including the
-project overlay:
+`/guard-test <tool> <json>` 在不执行的前提下，用生效策略试算一次调用——与闸门会得出的判定相同，
+包含项目策略叠加：
 
 ```
 /guard-test bash {"command":"git push origin main"}
@@ -517,11 +425,10 @@ bash: ask by "git push *" [bash]
 web_search: ask by "params queries=*secret*" [params]
 ```
 
-`/guard-undo [list|<id>]` rolls back a pre-write snapshot; see
-[Snapshots and undo](#snapshots-and-undo).
+`/guard-undo [list|<id>]` 回滚写前快照，见[快照与回滚](#快照与回滚)。
 
-`/guard-log [n]` prints the last n decisions (default 20, max 200) from
-`audit.jsonl`, read as a bounded tail rather than parsing the whole file:
+`/guard-log [n]` 打印 `audit.jsonl` 里最近 n 条判定（默认 20，上限 200），做法是从文件尾部读一段
+有界窗口，而不是解析整个文件：
 
 ```
 /guard-log
@@ -530,30 +437,26 @@ web_search: ask by "params queries=*secret*" [params]
 00:11:15  allow  web_search  params queries=*secret*
 ```
 
-All three are registered when the `commands` service is mounted; without it they
-are simply absent. A command that takes arguments must declare `input`, or the
-Client treats `/name args` as ordinary chat — the reason all three ship an
-`input.hint`.
+三者都在 `commands` 服务挂载时注册；没有这个服务就只是不存在。带参数的命令必须声明 `input`，
+否则客户端会把 `/name args` 当成普通聊天——这就是三个命令都带 `input.hint` 的原因。
 
-## Redaction
+## 脱敏
 
-`tools/post-execute` replaces credential-shaped text in every tool result before
-it is persisted: `sk-*`/`rk-*`/`pk-*` keys, GitHub tokens (`ghp_`, `gho_`,
-`github_pat_`), Slack tokens, AWS access keys, Google API keys, JWTs, `Bearer`
-tokens, PEM private-key blocks, `SECRET|TOKEN|PASSWORD|API_KEY=...` values, and
-JSON string fields whose key name contains `TOKEN` / `SECRET` / `PASSWORD` /
-`API_KEY` / `AUTHORIZATION` anywhere (`"OXIDETERM_MCP_TOKEN": "..."` included).
-Only text blocks change; images and structured blocks pass through. Set
-`redact: false` to disable.
+`tools/post-execute` 在每次工具结果落盘前替换凭据形态的文本：`sk-*`/`rk-*`/`pk-*` 密钥、
+GitHub 令牌（`ghp_`、`gho_`、`github_pat_`）、Slack 令牌、AWS 访问密钥、Google API 密钥、JWT、
+`Bearer` 令牌、PEM 私钥块、`SECRET|TOKEN|PASSWORD|API_KEY=...` 形式的值，以及键名**任意位置**
+包含 `TOKEN` / `SECRET` / `PASSWORD` / `API_KEY` / `AUTHORIZATION` 的 JSON 字符串字段
+（含 `"OXIDETERM_MCP_TOKEN": "..."`）。键名允许 `-` 和 `.`，所以 `x-api-key`、`settings.token`
+同样覆盖；被转义过的 JSON（`{\"token\":\"…\"}`，shell 命令里常见）也覆盖，替换时保留转义。
+只有文本块会被改动；图片和结构化块原样通过。`redact: false` 可关闭。
 
-The replaced text is what the session log stores — verified by inspection, not
-just the UI.
+会话日志保存的是替换后的文本——这一点经过检查确认，不只是界面显示。
 
-## Configuration
+## 配置
 
 ```yaml
 - id: guard
-  name: dsh-guard
+  name: '@netcatty/dsh-guard'
   config:
     "*": allow
     path:
@@ -582,17 +485,12 @@ just the UI.
     snapshotRetain: 100
 ```
 
-## Limits
+## 限制
 
-- `ask` becomes a denial when the session has no approval channel (approval
-  policy `never`, or a non-interactive run).
-- The bash scanner is a token heuristic, not a shell parser: quoted globs are
-  skipped, and shell expansion can hide a path. It catches the common accident,
-  not a determined bypass.
-- `network` rules inspect URLs in text. They are not a proxy: traffic from a
-  process that resolves its own hostnames is out of reach.
-- Glob patterns are bounded to `maxGlobStars` (default 2) unbounded `*` runs;
-  a third one is a validation error, because nested greedy quantifiers
-  backtrack exponentially on untrusted input. Write two rules instead.
-- `preset:<name>` identity depends on the host recording `agentPreset` on the
-  session; without it only `main`/`subagent` are distinguishable.
+- 会话没有审批通道时（审批策略为 `never`，或非交互运行），`ask` 会变成拒绝。
+- bash 扫描器是词元启发式，不是 shell 解析器：带引号的 glob 会被跳过，shell 展开也可能藏住路径。
+  它抓的是常见的误操作，不是蓄意绕过。
+- `network` 规则检查文本里的 URL。它不是代理：进程自己解析主机名的流量不在覆盖范围内。
+- glob 模式受 `maxGlobStars`（默认 2）限制无界 `*` 段数；第三段是校验错误，因为嵌套贪婪量词在不可信
+  输入上会指数级回溯。写成两条规则。
+- `preset:<name>` 身份依赖宿主在会话上记录 `agentPreset`；没有它就只能区分 `main`/`subagent`。

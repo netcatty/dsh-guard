@@ -1,6 +1,6 @@
 {
   "name": "@netcatty/dsh-guard",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "allow/ask/deny permission gates for DeepSeek Harness tools: path/params/agents surfaces, argv decomposition, network rules, redaction, grants, dry-run, fail-closed config",
   "type": "module",
   "main": "lib/index.js",
@@ -25,7 +25,8 @@
     "lib/audit-log.js",
     "lib/diff-view.js",
     "locale/*.json",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "README.en.md"
   ],
   "dsh": {
     "bundle": {
