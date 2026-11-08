@@ -108,6 +108,10 @@ test('redactText masks credential shapes', () => {
     '{"OXIDETERM_MCP_TOKEN":"***"}',
   );
   assert.equal(redactText('{"sessionToken": "abcdef123456"}'), '{"sessionToken":"***"}');
+  // Keys JSON actually carries: hyphenated header names and dotted prefixes.
+  assert.equal(redactText('{"x-api-key": "abcdef123456"}'), '{"x-api-key":"***"}');
+  assert.equal(redactText('{"auth-token": "abcdef123456"}'), '{"auth-token":"***"}');
+  assert.equal(redactText('{"settings.token": "abcdef123456"}'), '{"settings.token":"***"}');
   assert.equal(redactText('{"dataStore": {"maxTokens": 32768}}'), '{"dataStore": {"maxTokens": 32768}}');
   assert.equal(redactText('{"monkey": "banana"}'), '{"monkey": "banana"}');
   const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----';
